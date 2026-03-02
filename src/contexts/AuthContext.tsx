@@ -16,8 +16,8 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 function getRedirectUrl(): string {
   if (Platform.OS === 'web') {
-    // On web, redirect back to the current origin
-    return `${window.location.origin}/(auth)/verify`;
+    // On web, redirect back to the origin root — AuthProvider handles the token exchange
+    return window.location.origin;
   }
   // On native, use the deep link scheme
   return Linking.createURL('(auth)/verify');
@@ -30,16 +30,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // On web, check if the current URL contains auth tokens (from magic link redirect)
     if (Platform.OS === 'web') {
+      // PKCE flow: Supabase v2 redirects with ?code= query parameter
+      const searchParams = new URLSearchParams(window.location.search);
+      const code = searchParams.get('code');
+      if (code) {
+        supabase.auth.exchangeCodeForSession(code).then(() => {
+          // Clean up the URL query string
+          window.history.replaceState(null, '', window.location.pathname);
+        });
+      }
+
+      // Implicit flow fallback: older Supabase or explicit config uses #access_token=
       const hash = window.location.hash;
       if (hash) {
-        const params = new URLSearchParams(hash.replace('#', ''));
-        const accessToken = params.get('access_token');
-        const refreshToken = params.get('refresh_token');
+        const hashParams = new URLSearchParams(hash.replace('#', ''));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
         if (accessToken && refreshToken) {
           supabase.auth
             .setSession({ access_token: accessToken, refresh_token: refreshToken })
             .then(() => {
-              // Clean up the URL hash
               window.history.replaceState(null, '', window.location.pathname);
             });
         }

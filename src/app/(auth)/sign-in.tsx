@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
   KeyboardAvoidingView,
@@ -14,11 +14,41 @@ import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, FONTS } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
 
+const COOLDOWN_SECONDS = 60;
+
+function isRateLimitError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('rate limit') || lower.includes('too many requests') || lower.includes('email rate limit');
+}
+
 export default function SignInScreen() {
   const { signInWithMagicLink } = useAuth();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const startCooldown = useCallback(() => {
+    setCooldown(COOLDOWN_SECONDS);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setCooldown((prev) => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          timerRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
 
   const handleSubmit = async () => {
     const trimmed = email.trim().toLowerCase();
@@ -27,6 +57,8 @@ export default function SignInScreen() {
       return;
     }
 
+    if (cooldown > 0) return;
+
     setIsLoading(true);
     setError(null);
 
@@ -34,9 +66,15 @@ export default function SignInScreen() {
     setIsLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      if (isRateLimitError(authError.message)) {
+        setError('Please wait a minute before requesting another magic link.');
+        startCooldown();
+      } else {
+        setError(authError.message);
+      }
     } else {
-      router.replace('/(auth)/verify');
+      startCooldown();
+      router.replace({ pathname: '/(auth)/verify', params: { email: trimmed } });
     }
   };
 
@@ -73,10 +111,10 @@ export default function SignInScreen() {
 
         <View style={styles.footer}>
           <Button
-            label="Send magic link"
+            label={cooldown > 0 ? `Resend in ${cooldown}s` : 'Send magic link'}
             onPress={handleSubmit}
             loading={isLoading}
-            disabled={!email.trim()}
+            disabled={!email.trim() || cooldown > 0}
           />
         </View>
       </KeyboardAvoidingView>
