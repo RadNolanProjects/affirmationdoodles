@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__figma__get_design_context",
+      "mcp__figma__get_screenshot",
+      "WebSearch",
+      "WebFetch(domain:docs.expo.dev)",
+      "WebFetch(domain:supabase.com)",
+      "Bash(python3:*)",
+      "Bash(npx create-expo-app@latest:*)",
+      "Bash(npx expo:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm search:*)"
+    ]
+  }
+}
