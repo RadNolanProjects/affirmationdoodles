@@ -17,7 +17,7 @@ import { COLORS, FONTS } from '@/lib/constants';
 
 export default function ListenScreen() {
   const { affirmations } = useAffirmations();
-  const { createSession, completeSession } = useListeningSession();
+  const { createSession } = useListeningSession();
   const scrollRef = useRef<ScrollView>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
@@ -63,11 +63,14 @@ export default function ListenScreen() {
   }, [status.playing, currentTime, duration, status.isLoaded]);
 
   const handleComplete = useCallback(async () => {
-    if (sessionId) {
-      await completeSession(sessionId).catch(() => {});
-    }
-    router.replace('/(main)/listen/complete');
-  }, [sessionId, completeSession]);
+    router.replace({
+      pathname: '/(main)/listen/doodle',
+      params: {
+        sessionId: sessionId ?? '',
+        affirmationTitle: affirmation?.title ?? '',
+      },
+    });
+  }, [sessionId, affirmation?.title]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);

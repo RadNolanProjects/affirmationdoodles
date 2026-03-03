@@ -17,22 +17,71 @@ import { useListeningSession } from '@/hooks/useListeningSession';
 import { COLORS, FONTS } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
 import { AffirmationCard } from '@/components/affirmation/AffirmationCard';
+import { DoodleThumbnail } from '@/components/doodle/DoodleThumbnail';
+import type { DoodleData, ListeningSession } from '@/types';
 
-const SHEET_COLLAPSED = 130; // handle + CTA + bottom padding
-const SHEET_EXPANDED = 420; // handle + affirmation section + CTA + padding
+type SessionWithTitle = ListeningSession & {
+  affirmations: { title: string } | null;
+};
+
+const SHEET_COLLAPSED = 130;
+const SHEET_COLLAPSED_COMPLETE = 80;
+const SHEET_EXPANDED = 420;
 const SNAP_THRESHOLD = 60;
+
+function parseDoodleData(raw: string | null): DoodleData | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as DoodleData;
+  } catch {
+    return null;
+  }
+}
 
 export default function DashboardScreen() {
   const { signOut } = useAuth();
-  const { width: vw, height: vh } = useWindowDimensions();
+  const { width: vw } = useWindowDimensions();
   const { affirmations, isLoading, fetchAffirmations } = useAffirmations();
   const { getSessionsForMonth } = useListeningSession();
-  const [completedDays, setCompletedDays] = useState<Set<string>>(new Set());
+  const [sessions, setSessions] = useState<SessionWithTitle[]>([]);
 
   // Sheet state
   const [sheetExpanded, setSheetExpanded] = useState(true);
   const sheetHeight = useRef(new Animated.Value(SHEET_EXPANDED)).current;
   const lastHeight = useRef(SHEET_EXPANDED);
+
+  // Derive today's completion state
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const todaySession = useMemo(() => {
+    return sessions.find(
+      (s) => s.listened_at === todayStr && s.completed_at && s.doodle_data
+    ) ?? null;
+  }, [sessions, todayStr]);
+
+  const todayDoodle = useMemo(
+    () => parseDoodleData(todaySession?.doodle_data ?? null),
+    [todaySession]
+  );
+
+  const todayCompleted = !!todayDoodle;
+
+  // Map date → doodle data for grid thumbnails
+  const sessionsByDate = useMemo(() => {
+    const map = new Map<string, SessionWithTitle>();
+    for (const s of sessions) {
+      // Keep the most recent session per day
+      if (!map.has(s.listened_at) || (s.doodle_data && !map.get(s.listened_at)?.doodle_data)) {
+        map.set(s.listened_at, s);
+      }
+    }
+    return map;
+  }, [sessions]);
+
+  const collapsedHeight = todayCompleted ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -40,18 +89,20 @@ export default function DashboardScreen() {
       onMoveShouldSetPanResponder: (_, gesture) =>
         Math.abs(gesture.dy) > 5,
       onPanResponderMove: (_, gesture) => {
+        const minH = todayCompleted ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
         const newHeight = Math.max(
-          SHEET_COLLAPSED,
+          minH,
           Math.min(SHEET_EXPANDED, lastHeight.current - gesture.dy)
         );
         sheetHeight.setValue(newHeight);
       },
       onPanResponderRelease: (_, gesture) => {
+        const minH = todayCompleted ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
         const currentHeight = lastHeight.current - gesture.dy;
         const shouldExpand = gesture.dy < -SNAP_THRESHOLD ||
-          (currentHeight > (SHEET_COLLAPSED + SHEET_EXPANDED) / 2 && gesture.dy <= SNAP_THRESHOLD);
+          (currentHeight > (minH + SHEET_EXPANDED) / 2 && gesture.dy <= SNAP_THRESHOLD);
 
-        const target = shouldExpand ? SHEET_EXPANDED : SHEET_COLLAPSED;
+        const target = shouldExpand ? SHEET_EXPANDED : minH;
         lastHeight.current = target;
         setSheetExpanded(shouldExpand);
 
@@ -66,7 +117,7 @@ export default function DashboardScreen() {
   ).current;
 
   const toggleSheet = () => {
-    const target = sheetExpanded ? SHEET_COLLAPSED : SHEET_EXPANDED;
+    const target = sheetExpanded ? collapsedHeight : SHEET_EXPANDED;
     lastHeight.current = target;
     setSheetExpanded(!sheetExpanded);
     Animated.spring(sheetHeight, {
@@ -88,12 +139,11 @@ export default function DashboardScreen() {
   const loadHistory = async () => {
     try {
       const now = new Date();
-      const sessions = await getSessionsForMonth(
+      const data = await getSessionsForMonth(
         now.getFullYear(),
         now.getMonth() + 1
       );
-      const days = new Set(sessions.map((s) => s.listened_at));
-      setCompletedDays(days);
+      setSessions(data as SessionWithTitle[]);
     } catch {}
   };
 
@@ -114,19 +164,26 @@ export default function DashboardScreen() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayOfWeek = new Date(year, month, 1).getDay();
 
-    const cells: { day: number | null; completed: boolean }[] = [];
+    const cells: { day: number | null; dateStr: string | null; completed: boolean }[] = [];
     for (let i = 0; i < firstDayOfWeek; i++) {
-      cells.push({ day: null, completed: false });
+      cells.push({ day: null, dateStr: null, completed: false });
     }
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      cells.push({ day: d, completed: completedDays.has(dateStr) });
+      cells.push({
+        day: d,
+        dateStr,
+        completed: sessionsByDate.has(dateStr),
+      });
     }
     return cells;
-  }, [completedDays]);
+  }, [sessionsByDate]);
 
   const hasAffirmations = affirmations.length > 0;
   const hasRecordedAffirmations = affirmations.some((a) => a.audio_url);
+
+  const cellWidth = vw * 0.05;
+  const cellHeight = cellWidth * 1.5;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -156,13 +213,16 @@ export default function DashboardScreen() {
           <View style={[styles.grid, { gap: vw * 0.01, marginTop: 16 }]}>
             {historyGrid.map((cell, i) => {
               const isFirstDay = cell.day === 1;
+              const session = cell.dateStr ? sessionsByDate.get(cell.dateStr) : null;
+              const doodle = session?.doodle_data ? parseDoodleData(session.doodle_data) : null;
+
               return (
                 <View
                   key={i}
                   style={[
                     {
-                      width: vw * 0.05,
-                      height: vw * 0.05 * 1.5,
+                      width: cellWidth,
+                      height: cellHeight,
                       borderRadius: vw * 0.01,
                     },
                     styles.gridCell,
@@ -170,7 +230,17 @@ export default function DashboardScreen() {
                     isFirstDay && styles.gridCellFirst,
                     cell.completed && styles.gridCellFilled,
                   ]}
-                />
+                >
+                  {doodle && (
+                    <DoodleThumbnail
+                      doodleData={doodle}
+                      width={cellWidth - 4}
+                      height={cellHeight - 4}
+                      inverted
+                      borderRadius={Math.max(1, vw * 0.01 - 2)}
+                    />
+                  )}
+                </View>
               );
             })}
           </View>
@@ -189,43 +259,104 @@ export default function DashboardScreen() {
           </Pressable>
         </View>
 
-        {/* Expandable content */}
-        {sheetExpanded && (
-          <View style={styles.sheetContent}>
-            {todaysAffirmation ? (
-              <View style={styles.affirmationSection}>
-                <View style={styles.affirmationHeader}>
-                  <Text style={styles.sectionLabel}>Today's Affirmation</Text>
-                  <Pressable onPress={() => router.push('/(main)/manage')}>
-                    <Text style={styles.manageLink}>Manage</Text>
-                  </Pressable>
+        {todayCompleted ? (
+          <>
+            {/* Completion: Expanded content */}
+            {sheetExpanded && (
+              <View style={styles.sheetContent}>
+                {/* Doodle Preview */}
+                <View style={styles.doodlePreviewWrapper}>
+                  {todayDoodle && (
+                    <DoodleThumbnail
+                      doodleData={todayDoodle}
+                      width={vw * 0.55}
+                      height={vw * 0.55 * 1.3}
+                      inverted
+                      borderRadius={16}
+                    />
+                  )}
                 </View>
-                <AffirmationCard affirmation={todaysAffirmation} />
+
+                {/* Affirmation info */}
+                <View style={styles.completionInfo}>
+                  <Text style={styles.completionTitle}>
+                    {todaySession?.affirmations?.title ?? 'Today\'s Affirmation'}
+                  </Text>
+                  <Text style={styles.completionDate}>Today</Text>
+                </View>
               </View>
-            ) : !isLoading ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>
-                  Record your first affirmation to get started.
+            )}
+
+            {/* Completion: Collapsed peek */}
+            {!sheetExpanded && (
+              <View style={styles.collapsedComplete}>
+                {todayDoodle && (
+                  <DoodleThumbnail
+                    doodleData={todayDoodle}
+                    width={36}
+                    height={36}
+                    inverted
+                    borderRadius={6}
+                  />
+                )}
+                <Text style={styles.collapsedText} numberOfLines={1}>
+                  {todaySession?.affirmations?.title ?? 'Affirmation'} complete
                 </Text>
               </View>
-            ) : null}
-          </View>
-        )}
+            )}
 
-        {/* CTA Button — always visible */}
-        <View style={styles.ctaArea}>
-          {hasRecordedAffirmations ? (
-            <Button
-              label="Start Affirmation"
-              onPress={() => router.push('/(main)/listen')}
-            />
-          ) : (
-            <Button
-              label={hasAffirmations ? 'Record Affirmation' : '+ Create Affirmation'}
-              onPress={() => router.push('/(main)/create')}
-            />
-          )}
-        </View>
+            {/* Share button */}
+            <View style={styles.ctaArea}>
+              <Button
+                label="Share"
+                variant="outlined"
+                onPress={() => {
+                  // Share functionality — future M5
+                }}
+              />
+            </View>
+          </>
+        ) : (
+          <>
+            {/* Normal: Expandable content */}
+            {sheetExpanded && (
+              <View style={styles.sheetContent}>
+                {todaysAffirmation ? (
+                  <View style={styles.affirmationSection}>
+                    <View style={styles.affirmationHeader}>
+                      <Text style={styles.sectionLabel}>Today's Affirmation</Text>
+                      <Pressable onPress={() => router.push('/(main)/manage')}>
+                        <Text style={styles.manageLink}>Manage</Text>
+                      </Pressable>
+                    </View>
+                    <AffirmationCard affirmation={todaysAffirmation} />
+                  </View>
+                ) : !isLoading ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyText}>
+                      Record your first affirmation to get started.
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+
+            {/* CTA Button — always visible */}
+            <View style={styles.ctaArea}>
+              {hasRecordedAffirmations ? (
+                <Button
+                  label="Start Affirmation"
+                  onPress={() => router.push('/(main)/listen')}
+                />
+              ) : (
+                <Button
+                  label={hasAffirmations ? 'Record Affirmation' : '+ Create Affirmation'}
+                  onPress={() => router.push('/(main)/create')}
+                />
+              )}
+            </View>
+          </>
+        )}
       </Animated.View>
     </SafeAreaView>
   );
@@ -271,6 +402,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8E2DB',
     borderWidth: 2,
     borderColor: '#E8E2DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   gridCellEmpty: {
     backgroundColor: 'transparent',
@@ -339,5 +473,40 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+
+  // Completion state
+  doodlePreviewWrapper: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  completionInfo: {
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+  completionTitle: {
+    fontFamily: FONTS.bodyBold,
+    fontSize: 16,
+    color: COLORS.text,
+    textDecorationLine: 'underline',
+  },
+  completionDate: {
+    fontFamily: FONTS.bodyRegular,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  collapsedComplete: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    gap: 12,
+    paddingBottom: 12,
+  },
+  collapsedText: {
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 14,
+    color: COLORS.text,
+    flex: 1,
   },
 });

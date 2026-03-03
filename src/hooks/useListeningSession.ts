@@ -27,6 +27,14 @@ export function useListeningSession() {
     if (error) throw error;
   };
 
+  const saveDoodle = async (sessionId: string, doodleData: string) => {
+    const { error } = await supabase
+      .from('listening_sessions')
+      .update({ doodle_data: doodleData })
+      .eq('id', sessionId);
+    if (error) throw error;
+  };
+
   const getSessionsForMonth = async (year: number, month: number) => {
     if (!user) return [];
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -36,16 +44,16 @@ export function useListeningSession() {
 
     const { data, error } = await supabase
       .from('listening_sessions')
-      .select('*')
+      .select('*, affirmations(title)')
       .eq('user_id', user.id)
       .gte('listened_at', startDate)
       .lt('listened_at', endDate)
       .not('completed_at', 'is', null)
-      .returns<ListeningSession[]>();
+      .returns<(ListeningSession & { affirmations: { title: string } | null })[]>();
 
     if (error) throw error;
     return data ?? [];
   };
 
-  return { createSession, completeSession, getSessionsForMonth };
+  return { createSession, completeSession, saveDoodle, getSessionsForMonth };
 }

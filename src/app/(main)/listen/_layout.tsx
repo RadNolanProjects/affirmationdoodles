@@ -11,6 +11,7 @@ export default function ListenLayout() {
       }}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="doodle" />
       <Stack.Screen name="complete" />
     </Stack>
   );

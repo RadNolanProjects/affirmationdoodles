@@ -84,6 +84,8 @@ export type Database = {
           affirmation_id: string;
           listened_at: string;
           completed_at: string | null;
+          doodle_url: string | null;
+          doodle_data: string | null;
           created_at: string;
         };
         Insert: {
@@ -92,6 +94,8 @@ export type Database = {
           affirmation_id: string;
           listened_at?: string;
           completed_at?: string | null;
+          doodle_url?: string | null;
+          doodle_data?: string | null;
           created_at?: string;
         };
         Update: {
@@ -100,6 +104,8 @@ export type Database = {
           affirmation_id?: string;
           listened_at?: string;
           completed_at?: string | null;
+          doodle_url?: string | null;
+          doodle_data?: string | null;
           created_at?: string;
         };
         Relationships: [

@@ -12,3 +12,11 @@ export type ScriptLine = {
   index: number;
   text: string;
 };
+
+export type DoodlePoint = { x: number; y: number };
+export type DoodleStroke = DoodlePoint[];
+export type DoodleData = {
+  strokes: DoodleStroke[];
+  canvasWidth: number;
+  canvasHeight: number;
+};
