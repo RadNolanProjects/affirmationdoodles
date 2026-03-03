@@ -537,6 +537,7 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.1)',
+    backgroundColor: '#FAFAFC',
   },
 
   // Completion state

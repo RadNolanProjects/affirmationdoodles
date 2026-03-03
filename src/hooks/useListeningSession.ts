@@ -7,11 +7,15 @@ export function useListeningSession() {
 
   const createSession = async (affirmationId: string) => {
     if (!user) throw new Error('Not authenticated');
+    // Use local date so a 10pm session isn't tagged as the next UTC day
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const { data, error } = await supabase
       .from('listening_sessions')
       .insert({
         user_id: user.id,
         affirmation_id: affirmationId,
+        listened_at: localDate,
       })
       .select()
       .single<ListeningSession>();
