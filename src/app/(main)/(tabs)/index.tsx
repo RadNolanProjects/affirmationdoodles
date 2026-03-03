@@ -299,7 +299,6 @@ export default function DashboardScreen() {
           <Text style={styles.sectionLabel}>History</Text>
           <View style={[styles.grid, { gap: vw * 0.01, marginTop: 16 }]}>
             {historyGrid.map((cell, i) => {
-              const isFirstDay = cell.day === 1;
               const session = cell.dateStr ? sessionsByDate.get(cell.dateStr) : null;
               const doodle = session?.doodle_data ? parseDoodleData(session.doodle_data) : null;
 
@@ -314,7 +313,6 @@ export default function DashboardScreen() {
                     },
                     styles.gridCell,
                     cell.day === null && styles.gridCellEmpty,
-                    isFirstDay && !cell.completed && styles.gridCellFirst,
                     cell.completed && styles.gridCellFilled,
                   ]}
                 >
@@ -611,9 +609,6 @@ const styles = StyleSheet.create({
   gridCellEmpty: {
     backgroundColor: 'transparent',
     borderColor: 'transparent',
-  },
-  gridCellFirst: {
-    borderColor: COLORS.text,
   },
   gridCellFilled: {
     backgroundColor: COLORS.text,
