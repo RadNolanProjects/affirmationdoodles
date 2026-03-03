@@ -2,7 +2,7 @@
 
 ## What Is This App?
 
-Affirm is a mobile-first daily affirmations app. Users record affirmations in their own voice, listen to them daily, and cap each session with a quick doodle. Over time, the doodle history builds into a visual calendar. The PRD lives at `affirm-prd.md`.
+Affirm is a mobile-first daily affirmations app. Users record affirmations in their own voice, listen to them daily, and cap each session with a quick doodle. Over time, the doodle history builds into a visual grid of all past entries. The PRD lives at `affirm-prd.md`.
 
 ---
 
@@ -111,7 +111,7 @@ affirmationdoodles/
     │   ├── usePreWrittenScripts.ts # Fetch pre-written scripts
     │   ├── useRecording.ts       # Wraps expo-audio recorder, prepareToRecordAsync, cumulative duration
     │   ├── usePlayback.ts        # Wraps expo-audio player with text line sync
-    │   ├── useListeningSession.ts # Create/complete sessions, save doodle data, monthly query with joins
+    │   ├── useListeningSession.ts # Create/complete sessions, save doodle data, getAllSessions (all-time) + monthly query with joins
     │   └── useSpeechRecognition.ts # Web Speech API for real-time word detection
     │
     ├── lib/
@@ -172,19 +172,25 @@ All tables have row-level security. Users can only access their own data. `pre_w
 
 ### Dashboard (Home)
 - Large Geist hero text (24vw, responsive) — static "I am more than enough"
-- History grid: 7-column calendar for current month, responsive vw-based sizing
+- **History grid:** Reverse-chronological grid of all completed sessions (all-time, not monthly)
+  - Index 0 (top-left) = most recent doodle; last cell = first-ever doodle
+  - One cell per day that had a completed session, deduplicated by date
   - Grid cells: `#E8E2DB` background with 2px `#E8E2DB` border
-  - First day cell: `#2D1E3C` border
-  - Completed days without doodle: filled `#2D1E3C`
-  - Completed days with doodle: `#2D1E3C` background + inline SVG doodle thumbnail (white strokes)
+  - Completed cells with doodle: `#2D1E3C` background + inline SVG doodle thumbnail (white strokes)
+  - 140 trailing empty gray cells appended after real entries as an "empty state" representing pre-signup history
+  - `LinearGradient` overlay (transparent → `#FDF8ED`) covers bottom 60% of the grid, fading out the trailing cells
   - 7% vw padding on left/right
+  - Tapping a doodle cell opens a **view modal**: centered card with expanded doodle preview, affirmation title, formatted date ("Today" or "Month Day"), and a 3-dot menu with Redo Doodle / Delete Entry actions
+  - Data fetched via `getAllSessions()` (all completed sessions, ordered by `listened_at` desc)
 - **Bottom sheet modal** (draggable via PanResponder):
+  - Scroll spacer is dynamic — `Animated.View` height tied to current `sheetHeight`, so collapsing the sheet reduces scrollable area
   - **Normal mode** (no completion today):
     - Collapsed state (130px): drag handle + CTA button only
-    - Expanded state (420px): Today's Affirmation card + "Manage" link + CTA button
+    - Expanded state (340px): Today's Affirmation card (32px bottom padding) + "Manage" link + CTA button
   - **Completion mode** (today's session done with doodle):
     - Collapsed state (80px): drag handle + small doodle thumbnail + "X complete" text
-    - Expanded state (420px): large doodle preview (inverted colors) + affirmation title + "Today" + Share button
+    - Expanded state (500px): large doodle preview (inverted colors) + affirmation title + "Today" (32px margin to share area) + Share button
+    - 3-dot menu (top-right) with Redo Doodle / Delete Entry
   - Snap threshold at 60px, spring animation between states
   - Sheet bg: `#FAFAFC`, rounded top corners (25px), subtle shadow
 
@@ -241,7 +247,7 @@ All tables have row-level security. Users can only access their own data. `pre_w
 - **Background:** `#FDF8ED` (warm cream)
 - **Text/Accent:** `#2D1E3C` (deep purple-black)
 - **Cards:** `#FFFFFF` with `#E0DAD3` border
-- **Grid cells:** `#E8E2DB` background/border, first cell `#2D1E3C` border
+- **Grid cells:** `#E8E2DB` background/border
 - **Doodle canvas:** `#E8E2DB` background, `#2D1E3C` strokes (5px)
 - **Doodle thumbnails:** `#2D1E3C` background, `#FFFFFF` strokes (inverted)
 - **Muted text:** `#A0A0A0`
