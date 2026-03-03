@@ -8,6 +8,7 @@ type BottomBarProps = {
   ctaOnPress?: () => void;
   ctaDisabled?: boolean;
   ctaLoading?: boolean;
+  ctaVariant?: 'filled' | 'outlined' | 'white';
   showBack?: boolean;
 };
 
@@ -17,6 +18,7 @@ export function BottomBar({
   ctaOnPress,
   ctaDisabled = false,
   ctaLoading = false,
+  ctaVariant,
   showBack = true,
 }: BottomBarProps) {
   return (
@@ -34,6 +36,7 @@ export function BottomBar({
           onPress={ctaOnPress}
           disabled={ctaDisabled}
           loading={ctaLoading}
+          variant={ctaVariant}
           style={styles.cta}
         />
       )}
