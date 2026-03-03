@@ -45,7 +45,7 @@ export default function DashboardScreen() {
   const { signOut } = useAuth();
   const { width: vw } = useWindowDimensions();
   const { affirmations, isLoading, fetchAffirmations } = useAffirmations();
-  const { getSessionsForMonth, deleteSession } = useListeningSession();
+  const { getAllSessions, deleteSession } = useListeningSession();
   const [sessions, setSessions] = useState<SessionWithTitle[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewSession, setViewSession] = useState<SessionWithTitle | null>(null);
@@ -93,16 +93,15 @@ export default function DashboardScreen() {
     }
   }, [todayCompleted]);
 
-  // Map date → doodle data for grid thumbnails
-  const sessionsByDate = useMemo(() => {
+  // Deduplicate sessions by date (keep doodle version), newest first
+  const uniqueSessions = useMemo(() => {
     const map = new Map<string, SessionWithTitle>();
     for (const s of sessions) {
-      // Keep the most recent session per day
       if (!map.has(s.listened_at) || (s.doodle_data && !map.get(s.listened_at)?.doodle_data)) {
         map.set(s.listened_at, s);
       }
     }
-    return map;
+    return [...map.values()].sort((a, b) => b.listened_at.localeCompare(a.listened_at));
   }, [sessions]);
 
   const collapsedHeight = todayCompleted ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
@@ -164,11 +163,7 @@ export default function DashboardScreen() {
 
   const loadHistory = async () => {
     try {
-      const now = new Date();
-      const data = await getSessionsForMonth(
-        now.getFullYear(),
-        now.getMonth() + 1
-      );
+      const data = await getAllSessions();
       setSessions(data as SessionWithTitle[]);
     } catch {}
   };
@@ -243,29 +238,6 @@ export default function DashboardScreen() {
     return active[Math.floor(Math.random() * active.length)];
   }, [affirmations]);
 
-  // Generate history grid for current month
-  const historyGrid = useMemo(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDayOfWeek = new Date(year, month, 1).getDay();
-
-    const cells: { day: number | null; dateStr: string | null; completed: boolean }[] = [];
-    for (let i = 0; i < firstDayOfWeek; i++) {
-      cells.push({ day: null, dateStr: null, completed: false });
-    }
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      cells.push({
-        day: d,
-        dateStr,
-        completed: sessionsByDate.has(dateStr),
-      });
-    }
-    return cells;
-  }, [sessionsByDate]);
-
   const hasAffirmations = affirmations.length > 0;
   const hasRecordedAffirmations = affirmations.some((a) => a.audio_url);
 
@@ -295,50 +267,49 @@ export default function DashboardScreen() {
         </Text>
 
         {/* History Grid */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>History</Text>
-          <View style={[styles.grid, { gap: vw * 0.01, marginTop: 16 }]}>
-            {historyGrid.map((cell, i) => {
-              const session = cell.dateStr ? sessionsByDate.get(cell.dateStr) : null;
-              const doodle = session?.doodle_data ? parseDoodleData(session.doodle_data) : null;
+        {uniqueSessions.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>History</Text>
+            <View style={[styles.grid, { gap: vw * 0.01, marginTop: 16 }]}>
+              {uniqueSessions.map((session) => {
+                const doodle = parseDoodleData(session.doodle_data);
 
-              const cellContent = (
-                <View
-                  key={i}
-                  style={[
-                    {
-                      width: cellWidth,
-                      height: cellHeight,
-                      borderRadius: vw * 0.01,
-                    },
-                    styles.gridCell,
-                    cell.day === null && styles.gridCellEmpty,
-                    cell.completed && styles.gridCellFilled,
-                  ]}
-                >
-                  {doodle && (
-                    <DoodleThumbnail
-                      doodleData={doodle}
-                      width={cellWidth}
-                      height={cellHeight}
-                      inverted
-                      borderRadius={vw * 0.01}
-                    />
-                  )}
-                </View>
-              );
-
-              if (session && doodle) {
-                return (
-                  <Pressable key={i} onPress={() => setViewSession(session)}>
-                    {cellContent}
-                  </Pressable>
+                const cellContent = (
+                  <View
+                    style={[
+                      {
+                        width: cellWidth,
+                        height: cellHeight,
+                        borderRadius: vw * 0.01,
+                      },
+                      styles.gridCell,
+                      doodle && styles.gridCellFilled,
+                    ]}
+                  >
+                    {doodle && (
+                      <DoodleThumbnail
+                        doodleData={doodle}
+                        width={cellWidth}
+                        height={cellHeight}
+                        inverted
+                        borderRadius={vw * 0.01}
+                      />
+                    )}
+                  </View>
                 );
-              }
-              return cellContent;
-            })}
+
+                if (doodle) {
+                  return (
+                    <Pressable key={session.id} onPress={() => setViewSession(session)}>
+                      {cellContent}
+                    </Pressable>
+                  );
+                }
+                return <View key={session.id}>{cellContent}</View>;
+              })}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Extra space so content isn't hidden behind sheet */}
         <View style={{ height: SHEET_EXPANDED_COMPLETE + 20 }} />
@@ -605,10 +576,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-  },
-  gridCellEmpty: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
   },
   gridCellFilled: {
     backgroundColor: COLORS.text,

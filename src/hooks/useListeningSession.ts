@@ -70,5 +70,20 @@ export function useListeningSession() {
     if (error) throw error;
   };
 
-  return { createSession, completeSession, saveDoodle, deleteSession, getSessionsForMonth };
+  const getAllSessions = async () => {
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from('listening_sessions')
+      .select('*, affirmations(title)')
+      .eq('user_id', user.id)
+      .not('completed_at', 'is', null)
+      .order('listened_at', { ascending: false })
+      .returns<(ListeningSession & { affirmations: { title: string } | null })[]>();
+
+    if (error) throw error;
+    return data ?? [];
+  };
+
+  return { createSession, completeSession, saveDoodle, deleteSession, getSessionsForMonth, getAllSessions };
 }
