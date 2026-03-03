@@ -234,10 +234,10 @@ export default function DashboardScreen() {
                   {doodle && (
                     <DoodleThumbnail
                       doodleData={doodle}
-                      width={cellWidth - 4}
-                      height={cellHeight - 4}
+                      width={cellWidth}
+                      height={cellHeight}
                       inverted
-                      borderRadius={Math.max(1, vw * 0.01 - 2)}
+                      borderRadius={vw * 0.01}
                     />
                   )}
                 </View>
@@ -416,6 +416,7 @@ const styles = StyleSheet.create({
   gridCellFilled: {
     backgroundColor: COLORS.text,
     borderColor: COLORS.text,
+    borderWidth: 0,
   },
 
   // Bottom sheet

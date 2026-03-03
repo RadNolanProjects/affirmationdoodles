@@ -94,7 +94,12 @@ export function DoodleCanvas({ onStrokesChange }: Props) {
         }}
         {...panResponder.panHandlers}
       >
-        <Svg style={StyleSheet.absoluteFill}>
+        <Svg
+          width={canvasSize.width}
+          height={canvasSize.height}
+          viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`}
+          style={StyleSheet.absoluteFill}
+        >
           {strokes.map((stroke, i) => (
             <Path
               key={i}
