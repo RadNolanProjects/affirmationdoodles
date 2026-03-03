@@ -13,6 +13,7 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAffirmations } from '@/hooks/useAffirmations';
 import { useListeningSession } from '@/hooks/useListeningSession';
@@ -31,6 +32,7 @@ const SHEET_COLLAPSED_COMPLETE = 80;
 const SHEET_EXPANDED_DEFAULT = 340;
 const SHEET_EXPANDED_COMPLETE = 500;
 const SNAP_THRESHOLD = 60;
+const EMPTY_TRAIL_CELLS = 140;
 
 function parseDoodleData(raw: string | null): DoodleData | null {
   if (!raw) return null;
@@ -267,9 +269,9 @@ export default function DashboardScreen() {
         </Text>
 
         {/* History Grid */}
-        {uniqueSessions.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>History</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>History</Text>
+          <View style={styles.gridContainer}>
             <View style={[styles.grid, { gap: vw * 0.01, marginTop: 16 }]}>
               {uniqueSessions.map((session) => {
                 const doodle = parseDoodleData(session.doodle_data);
@@ -307,9 +309,29 @@ export default function DashboardScreen() {
                 }
                 return <View key={session.id}>{cellContent}</View>;
               })}
+              {/* Trailing empty cells */}
+              {Array.from({ length: EMPTY_TRAIL_CELLS }).map((_, i) => (
+                <View
+                  key={`empty-${i}`}
+                  style={[
+                    {
+                      width: cellWidth,
+                      height: cellHeight,
+                      borderRadius: vw * 0.01,
+                    },
+                    styles.gridCell,
+                  ]}
+                />
+              ))}
             </View>
+            {/* Gradient fade over trailing cells */}
+            <LinearGradient
+              colors={['transparent', COLORS.background]}
+              style={styles.gridGradient}
+              pointerEvents="none"
+            />
           </View>
-        )}
+        </View>
 
         {/* Extra space so content isn't hidden behind sheet */}
         <View style={{ height: SHEET_EXPANDED_COMPLETE + 20 }} />
@@ -565,9 +587,19 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     textDecorationLine: 'underline',
   },
+  gridContainer: {
+    position: 'relative',
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+  },
+  gridGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
   },
   gridCell: {
     backgroundColor: '#E8E2DB',
