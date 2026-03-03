@@ -73,6 +73,13 @@ const styles = StyleSheet.create({
   },
   white: {
     backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: '#B2B2B2',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    elevation: 4,
   },
   disabled: {
     opacity: 0.4,
