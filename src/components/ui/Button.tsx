@@ -10,7 +10,7 @@ import { COLORS } from '@/lib/constants';
 type ButtonProps = {
   label: string;
   onPress: () => void;
-  variant?: 'filled' | 'outlined';
+  variant?: 'filled' | 'outlined' | 'white';
   disabled?: boolean;
   loading?: boolean;
   style?: ViewStyle;
@@ -25,6 +25,7 @@ export function Button({
   style,
 }: ButtonProps) {
   const isFilled = variant === 'filled';
+  const isWhite = variant === 'white';
 
   return (
     <Pressable
@@ -32,7 +33,7 @@ export function Button({
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.base,
-        isFilled ? styles.filled : styles.outlined,
+        isFilled ? styles.filled : isWhite ? styles.white : styles.outlined,
         (disabled || loading) && styles.disabled,
         pressed && styles.pressed,
         style,
@@ -69,6 +70,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: 1.5,
     borderColor: COLORS.border,
+  },
+  white: {
+    backgroundColor: COLORS.white,
   },
   disabled: {
     opacity: 0.4,

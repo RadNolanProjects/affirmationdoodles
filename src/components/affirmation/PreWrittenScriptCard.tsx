@@ -1,27 +1,17 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '@/lib/constants';
-import type { PreWrittenScript } from '@/types';
 
 type Props = {
-  script: PreWrittenScript;
-  selected: boolean;
-  onSelect: () => void;
+  script: { title: string; script: string };
+  onPress: () => void;
 };
 
-export function PreWrittenScriptCard({ script, selected, onSelect }: Props) {
+export function PreWrittenScriptCard({ script, onPress }: Props) {
   return (
-    <Pressable
-      onPress={onSelect}
-      style={[styles.card, selected && styles.cardSelected]}
-    >
+    <Pressable onPress={onPress} style={styles.card}>
       <View style={styles.content}>
-        <Text style={[styles.title, selected && styles.titleSelected]}>
-          {script.title}
-        </Text>
-        <Text
-          style={[styles.scriptText, selected && styles.scriptTextSelected]}
-          numberOfLines={8}
-        >
+        <Text style={styles.title}>{script.title}</Text>
+        <Text style={styles.scriptText} numberOfLines={8}>
           {script.script.replace(/\n/g, ' ')}
         </Text>
       </View>
@@ -38,10 +28,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     padding: 24,
   },
-  cardSelected: {
-    backgroundColor: COLORS.text,
-    borderColor: COLORS.text,
-  },
   content: {
     gap: 8,
   },
@@ -50,15 +36,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.text,
   },
-  titleSelected: {
-    color: COLORS.white,
-  },
   scriptText: {
     fontSize: 13,
     lineHeight: 19,
     color: COLORS.textSecondary,
-  },
-  scriptTextSelected: {
-    color: 'rgba(255,255,255,0.7)',
   },
 });
