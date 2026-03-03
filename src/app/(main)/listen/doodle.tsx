@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { DoodleCanvas } from '@/components/doodle/DoodleCanvas';
@@ -9,12 +9,8 @@ import { useListeningSession } from '@/hooks/useListeningSession';
 import { COLORS } from '@/lib/constants';
 import type { DoodleStroke } from '@/types';
 
-// Layout constants (approximate heights for header + bottom bar)
-const HEADER_HEIGHT = 100;
-const BOTTOM_BAR_HEIGHT = 80;
-const CANVAS_MARGIN_H = 20;
-const CANVAS_MARGIN_V = 24 + 16; // top + bottom margins
 const ASPECT_RATIO = 2 / 3; // width:height = 2:3
+const CANVAS_PADDING = 20;
 
 export default function DoodleScreen() {
   const { sessionId, affirmationTitle } = useLocalSearchParams<{
@@ -24,15 +20,12 @@ export default function DoodleScreen() {
   const { saveDoodle, completeSession } = useListeningSession();
   const [hasStrokes, setHasStrokes] = useState(false);
   const [saving, setSaving] = useState(false);
-  const { width: vw, height: vh } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
-  // Calculate canvas size to fit viewport with 2:3 aspect ratio
-  const availableWidth = vw - CANVAS_MARGIN_H * 2;
-  const availableHeight =
-    vh - insets.top - insets.bottom - HEADER_HEIGHT - BOTTOM_BAR_HEIGHT - CANVAS_MARGIN_V;
-  // Pick the largest 2:3 rect that fits
-  const canvasWidth = Math.min(availableWidth, availableHeight * ASPECT_RATIO);
+  // Calculate canvas size from measured available space
+  const maxW = containerSize.width - CANVAS_PADDING * 2;
+  const maxH = containerSize.height - CANVAS_PADDING;
+  const canvasWidth = Math.min(maxW, maxH * ASPECT_RATIO);
   const canvasHeight = canvasWidth / ASPECT_RATIO;
 
   const { canvasView, undo, getCanvasData } = DoodleCanvas({
@@ -58,16 +51,21 @@ export default function DoodleScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <ScreenHeader
-        title="Doodle time!"
-        subtitle="Scribble below with whatever you're feeling."
-      />
+      <ScreenHeader title="Doodle!" />
 
       {/* Canvas */}
-      <View style={styles.canvasOuter}>
-        <View style={{ width: canvasWidth, height: canvasHeight }}>
-          {canvasView}
-        </View>
+      <View
+        style={styles.canvasOuter}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          setContainerSize({ width, height });
+        }}
+      >
+        {containerSize.width > 0 && (
+          <View style={{ width: canvasWidth, height: canvasHeight }}>
+            {canvasView}
+          </View>
+        )}
       </View>
 
       {/* Bottom Controls */}

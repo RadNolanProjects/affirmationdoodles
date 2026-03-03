@@ -28,7 +28,7 @@ export const STORAGE = {
 
 export const DOODLE = {
   strokeColor: '#2D1E3C',
-  strokeWidth: 5,
+  strokeWidth: 7.5,
   canvasBg: '#E8E2DB',
   thumbnailBg: '#2D1E3C',
   thumbnailStroke: '#FFFFFF',
