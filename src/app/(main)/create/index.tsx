@@ -162,7 +162,7 @@ export default function CreateChooseMethodScreen() {
       </ScrollView>
 
       <BottomBar
-        onBack={() => router.back()}
+        onBack={() => router.dismiss()}
         ctaLabel="Custom Script"
         ctaOnPress={() => router.push('/(main)/create/custom')}
         ctaVariant="white"
