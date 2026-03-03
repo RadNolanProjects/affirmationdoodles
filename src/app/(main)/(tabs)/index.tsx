@@ -334,7 +334,7 @@ export default function DashboardScreen() {
         </View>
 
         {/* Extra space so content isn't hidden behind sheet */}
-        <View style={{ height: SHEET_EXPANDED_COMPLETE + 20 }} />
+        <Animated.View style={{ height: Animated.add(sheetHeight, 20) }} />
       </ScrollView>
 
       {/* Bottom Sheet */}
@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
   completionInfo: {
     alignItems: 'center',
     gap: 4,
-    marginBottom: 24,
+    marginBottom: 32,
   },
   completionTitle: {
     fontFamily: FONTS.bodyBold,
