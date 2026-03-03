@@ -314,7 +314,7 @@ export default function DashboardScreen() {
                     },
                     styles.gridCell,
                     cell.day === null && styles.gridCellEmpty,
-                    isFirstDay && styles.gridCellFirst,
+                    isFirstDay && !cell.completed && styles.gridCellFirst,
                     cell.completed && styles.gridCellFilled,
                   ]}
                 >
