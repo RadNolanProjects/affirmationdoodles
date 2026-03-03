@@ -537,6 +537,7 @@ const styles = StyleSheet.create({
   },
   affirmationSection: {
     gap: 16,
+    paddingBottom: 16,
   },
   affirmationHeader: {
     flexDirection: 'row',
