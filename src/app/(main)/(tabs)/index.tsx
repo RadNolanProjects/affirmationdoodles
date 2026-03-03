@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Modal,
   PanResponder,
   Pressable,
   ScrollView,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAffirmations } from '@/hooks/useAffirmations';
 import { useListeningSession } from '@/hooks/useListeningSession';
@@ -26,7 +28,7 @@ type SessionWithTitle = ListeningSession & {
 
 const SHEET_COLLAPSED = 130;
 const SHEET_COLLAPSED_COMPLETE = 80;
-const SHEET_EXPANDED = 420;
+const SHEET_EXPANDED = 500;
 const SNAP_THRESHOLD = 60;
 
 function parseDoodleData(raw: string | null): DoodleData | null {
@@ -42,8 +44,9 @@ export default function DashboardScreen() {
   const { signOut } = useAuth();
   const { width: vw } = useWindowDimensions();
   const { affirmations, isLoading, fetchAffirmations } = useAffirmations();
-  const { getSessionsForMonth } = useListeningSession();
+  const { getSessionsForMonth, deleteSession } = useListeningSession();
   const [sessions, setSessions] = useState<SessionWithTitle[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Sheet state
   const [sheetExpanded, setSheetExpanded] = useState(true);
@@ -145,6 +148,29 @@ export default function DashboardScreen() {
       );
       setSessions(data as SessionWithTitle[]);
     } catch {}
+  };
+
+  const handleRedoDoodle = () => {
+    setMenuOpen(false);
+    if (todaySession) {
+      router.push({
+        pathname: '/(main)/listen/doodle',
+        params: {
+          sessionId: todaySession.id,
+          affirmationTitle: todaySession.affirmations?.title ?? '',
+        },
+      });
+    }
+  };
+
+  const handleDeleteEntry = async () => {
+    setMenuOpen(false);
+    if (todaySession) {
+      try {
+        await deleteSession(todaySession.id);
+        await loadHistory();
+      } catch {}
+    }
   };
 
   const heroText = 'I am more\nthan enough';
@@ -266,15 +292,23 @@ export default function DashboardScreen() {
               <View style={styles.sheetContent}>
                 {/* Doodle Preview */}
                 <View style={styles.doodlePreviewWrapper}>
-                  {todayDoodle && (
-                    <DoodleThumbnail
-                      doodleData={todayDoodle}
-                      width={vw * 0.55}
-                      height={vw * 0.55 * 1.3}
-                      inverted
-                      borderRadius={16}
-                    />
-                  )}
+                  <View>
+                    {todayDoodle && (
+                      <DoodleThumbnail
+                        doodleData={todayDoodle}
+                        width={vw * 0.45}
+                        height={vw * 0.45 * 1.5}
+                        inverted
+                        borderRadius={16}
+                      />
+                    )}
+                    <Pressable
+                      style={styles.menuButton}
+                      onPress={() => setMenuOpen(true)}
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={16} color="#fff" />
+                    </Pressable>
+                  </View>
                 </View>
 
                 {/* Affirmation info */}
@@ -305,16 +339,43 @@ export default function DashboardScreen() {
               </View>
             )}
 
-            {/* Share button */}
-            <View style={styles.ctaArea}>
-              <Button
-                label="Share"
-                variant="outlined"
-                onPress={() => {
-                  // Share functionality — future M5
-                }}
-              />
-            </View>
+            {/* Share button — only when expanded */}
+            {sheetExpanded && (
+              <View style={styles.ctaArea}>
+                <Button
+                  label="Share"
+                  variant="outlined"
+                  onPress={() => {
+                    // Share functionality — future M5
+                  }}
+                />
+              </View>
+            )}
+
+            {/* 3-dot menu modal */}
+            <Modal
+              visible={menuOpen}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setMenuOpen(false)}
+            >
+              <Pressable
+                style={styles.menuOverlay}
+                onPress={() => setMenuOpen(false)}
+              >
+                <View style={styles.menuCard}>
+                  <Pressable style={styles.menuItem} onPress={handleRedoDoodle}>
+                    <Ionicons name="refresh" size={18} color={COLORS.text} />
+                    <Text style={styles.menuItemText}>Redo Doodle</Text>
+                  </Pressable>
+                  <View style={styles.menuDivider} />
+                  <Pressable style={styles.menuItem} onPress={handleDeleteEntry}>
+                    <Ionicons name="trash-outline" size={18} color="#D14" />
+                    <Text style={[styles.menuItemText, { color: '#D14' }]}>Delete Entry</Text>
+                  </Pressable>
+                </View>
+              </Pressable>
+            </Modal>
           </>
         ) : (
           <>
@@ -509,5 +570,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.text,
     flex: 1,
+  },
+
+  // 3-dot menu
+  menuButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    width: 220,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+  },
+  menuItemText: {
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  menuDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    marginHorizontal: 20,
   },
 });

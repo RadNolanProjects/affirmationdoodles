@@ -58,5 +58,13 @@ export function useListeningSession() {
     return data ?? [];
   };
 
-  return { createSession, completeSession, saveDoodle, getSessionsForMonth };
+  const deleteSession = async (sessionId: string) => {
+    const { error } = await supabase
+      .from('listening_sessions')
+      .delete()
+      .eq('id', sessionId);
+    if (error) throw error;
+  };
+
+  return { createSession, completeSession, saveDoodle, deleteSession, getSessionsForMonth };
 }
