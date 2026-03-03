@@ -48,6 +48,7 @@ export default function DashboardScreen() {
   const { getSessionsForMonth, deleteSession } = useListeningSession();
   const [sessions, setSessions] = useState<SessionWithTitle[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [viewSession, setViewSession] = useState<SessionWithTitle | null>(null);
 
   // Sheet state — use refs so panResponder closures read current values
   const [sheetExpanded, setSheetExpanded] = useState(true);
@@ -195,6 +196,44 @@ export default function DashboardScreen() {
     }
   };
 
+  // View modal for past doodles
+  const viewDoodle = useMemo(
+    () => parseDoodleData(viewSession?.doodle_data ?? null),
+    [viewSession]
+  );
+
+  const formatDateLabel = (dateStr: string) => {
+    if (dateStr === todayStr) return 'Today';
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  };
+
+  const handleViewRedoDoodle = () => {
+    const session = viewSession;
+    setViewSession(null);
+    if (session) {
+      router.push({
+        pathname: '/(main)/listen/doodle',
+        params: {
+          sessionId: session.id,
+          affirmationTitle: session.affirmations?.title ?? '',
+        },
+      });
+    }
+  };
+
+  const handleViewDeleteEntry = async () => {
+    const session = viewSession;
+    setViewSession(null);
+    if (session) {
+      try {
+        await deleteSession(session.id);
+        await loadHistory();
+      } catch {}
+    }
+  };
+
   const heroText = 'I am more\nthan enough';
 
   // Today's affirmation (pick first active one, or random)
@@ -264,7 +303,7 @@ export default function DashboardScreen() {
               const session = cell.dateStr ? sessionsByDate.get(cell.dateStr) : null;
               const doodle = session?.doodle_data ? parseDoodleData(session.doodle_data) : null;
 
-              return (
+              const cellContent = (
                 <View
                   key={i}
                   style={[
@@ -290,6 +329,15 @@ export default function DashboardScreen() {
                   )}
                 </View>
               );
+
+              if (session && doodle) {
+                return (
+                  <Pressable key={i} onPress={() => setViewSession(session)}>
+                    {cellContent}
+                  </Pressable>
+                );
+              }
+              return cellContent;
             })}
           </View>
         </View>
@@ -443,6 +491,75 @@ export default function DashboardScreen() {
           </>
         )}
       </Animated.View>
+
+      {/* Past doodle view modal */}
+      <Modal
+        visible={!!viewSession}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewSession(null)}
+      >
+        <Pressable
+          style={styles.viewOverlay}
+          onPress={() => setViewSession(null)}
+        >
+          <View style={styles.viewCard} onStartShouldSetResponder={() => true}>
+            {/* 3-dot menu */}
+            <Pressable
+              style={styles.viewMenuButton}
+              onPress={() => setMenuOpen(true)}
+            >
+              <Ionicons name="ellipsis-horizontal" size={16} color={COLORS.text} />
+            </Pressable>
+
+            {/* Doodle preview */}
+            <View style={styles.viewDoodleWrapper}>
+              {viewDoodle && (
+                <DoodleThumbnail
+                  doodleData={viewDoodle}
+                  width={vw * 0.55}
+                  height={vw * 0.55 * 1.5}
+                  inverted
+                  borderRadius={16}
+                />
+              )}
+            </View>
+
+            {/* Info */}
+            <Text style={styles.viewTitle}>
+              {viewSession?.affirmations?.title ?? 'Affirmation'}
+            </Text>
+            <Text style={styles.viewDate}>
+              {viewSession ? formatDateLabel(viewSession.listened_at) : ''}
+            </Text>
+          </View>
+        </Pressable>
+
+        {/* Nested action menu */}
+        <Modal
+          visible={menuOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMenuOpen(false)}
+        >
+          <Pressable
+            style={styles.menuOverlay}
+            onPress={() => setMenuOpen(false)}
+          >
+            <View style={styles.menuCard}>
+              <Pressable style={styles.menuItem} onPress={handleViewRedoDoodle}>
+                <Ionicons name="refresh" size={18} color={COLORS.text} />
+                <Text style={styles.menuItemText}>Redo Doodle</Text>
+              </Pressable>
+              <View style={styles.menuDivider} />
+              <Pressable style={styles.menuItem} onPress={handleViewDeleteEntry}>
+                <Ionicons name="trash-outline" size={18} color="#D14" />
+                <Text style={[styles.menuItemText, { color: '#D14' }]}>Delete Entry</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -537,7 +654,7 @@ const styles = StyleSheet.create({
   },
   affirmationSection: {
     gap: 16,
-    paddingBottom: 16,
+    paddingBottom: 32,
   },
   affirmationHeader: {
     flexDirection: 'row',
@@ -657,5 +774,51 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(0,0,0,0.1)',
     marginHorizontal: 20,
+  },
+
+  // Past doodle view modal
+  viewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  viewCard: {
+    backgroundColor: '#FAFAFC',
+    borderRadius: 20,
+    paddingTop: 48,
+    paddingBottom: 28,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+    width: '80%',
+  },
+  viewMenuButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  viewDoodleWrapper: {
+    marginBottom: 16,
+  },
+  viewTitle: {
+    fontFamily: FONTS.bodyBold,
+    fontSize: 16,
+    color: COLORS.text,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  viewDate: {
+    fontFamily: FONTS.bodyRegular,
+    fontSize: 13,
+    color: COLORS.textSecondary,
   },
 });
