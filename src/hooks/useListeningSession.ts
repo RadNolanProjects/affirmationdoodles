@@ -30,7 +30,10 @@ export function useListeningSession() {
   const saveDoodle = async (sessionId: string, doodleData: string) => {
     const { error } = await supabase
       .from('listening_sessions')
-      .update({ doodle_data: doodleData })
+      .update({
+        doodle_data: doodleData,
+        completed_at: new Date().toISOString(),
+      })
       .eq('id', sessionId);
     if (error) throw error;
   };

@@ -17,14 +17,14 @@ export default function DoodleScreen() {
     sessionId: string;
     affirmationTitle: string;
   }>();
-  const { saveDoodle, completeSession } = useListeningSession();
+  const { saveDoodle } = useListeningSession();
   const [hasStrokes, setHasStrokes] = useState(false);
   const [saving, setSaving] = useState(false);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
-  // Calculate canvas size from measured available space
+  // Calculate canvas size from measured available space (shrink height a bit)
   const maxW = containerSize.width - CANVAS_PADDING * 2;
-  const maxH = containerSize.height - CANVAS_PADDING;
+  const maxH = containerSize.height - CANVAS_PADDING * 3;
   const canvasWidth = Math.min(maxW, maxH * ASPECT_RATIO);
   const canvasHeight = canvasWidth / ASPECT_RATIO;
 
@@ -41,7 +41,6 @@ export default function DoodleScreen() {
       const canvasData = getCanvasData();
       const doodleJson = JSON.stringify(canvasData);
       await saveDoodle(sessionId, doodleJson);
-      await completeSession(sessionId).catch(() => {});
       router.dismissAll();
       router.replace('/(main)/(tabs)');
     } catch {
@@ -51,7 +50,10 @@ export default function DoodleScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <ScreenHeader title="Doodle!" />
+      <ScreenHeader
+        title="Doodle!"
+        subtitle="Scribble below with whatever you're feeling."
+      />
 
       {/* Canvas */}
       <View
