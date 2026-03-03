@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { getAudioUrl } from '@/lib/storage';
 import { splitIntoSentences } from '@/lib/text';
@@ -7,15 +7,27 @@ import type { Affirmation, ScriptLine } from '@/types';
 export function usePlayback(affirmation: Affirmation | null) {
   const [audioSource, setAudioSource] = useState<string | null>(null);
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
+  const sourceLoadedRef = useRef(false);
 
   useEffect(() => {
+    sourceLoadedRef.current = false;
     if (affirmation?.audio_url) {
-      getAudioUrl(affirmation.audio_url).then(setAudioSource).catch(() => {});
+      getAudioUrl(affirmation.audio_url).then((url) => {
+        setAudioSource(url);
+        sourceLoadedRef.current = true;
+      }).catch(() => {});
     }
   }, [affirmation?.audio_url]);
 
   const player = useAudioPlayer(audioSource ? { uri: audioSource } : null);
   const status = useAudioPlayerStatus(player);
+
+  // Explicitly replace source when the signed URL resolves after initial render
+  useEffect(() => {
+    if (audioSource && player && sourceLoadedRef.current) {
+      player.replace({ uri: audioSource });
+    }
+  }, [audioSource]);
 
   const scriptLines: ScriptLine[] = useMemo(
     () =>

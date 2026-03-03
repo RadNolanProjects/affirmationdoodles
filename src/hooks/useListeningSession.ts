@@ -7,11 +7,15 @@ export function useListeningSession() {
 
   const createSession = async (affirmationId: string) => {
     if (!user) throw new Error('Not authenticated');
+    // Use local date so a 10pm session isn't tagged as the next UTC day
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const { data, error } = await supabase
       .from('listening_sessions')
       .insert({
         user_id: user.id,
         affirmation_id: affirmationId,
+        listened_at: localDate,
       })
       .select()
       .single<ListeningSession>();
@@ -27,6 +31,17 @@ export function useListeningSession() {
     if (error) throw error;
   };
 
+  const saveDoodle = async (sessionId: string, doodleData: string) => {
+    const { error } = await supabase
+      .from('listening_sessions')
+      .update({
+        doodle_data: doodleData,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId);
+    if (error) throw error;
+  };
+
   const getSessionsForMonth = async (year: number, month: number) => {
     if (!user) return [];
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -36,16 +51,39 @@ export function useListeningSession() {
 
     const { data, error } = await supabase
       .from('listening_sessions')
-      .select('*')
+      .select('*, affirmations(title)')
       .eq('user_id', user.id)
       .gte('listened_at', startDate)
       .lt('listened_at', endDate)
       .not('completed_at', 'is', null)
-      .returns<ListeningSession[]>();
+      .returns<(ListeningSession & { affirmations: { title: string } | null })[]>();
 
     if (error) throw error;
     return data ?? [];
   };
 
-  return { createSession, completeSession, getSessionsForMonth };
+  const deleteSession = async (sessionId: string) => {
+    const { error } = await supabase
+      .from('listening_sessions')
+      .delete()
+      .eq('id', sessionId);
+    if (error) throw error;
+  };
+
+  const getAllSessions = async () => {
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from('listening_sessions')
+      .select('*, affirmations(title)')
+      .eq('user_id', user.id)
+      .not('completed_at', 'is', null)
+      .order('listened_at', { ascending: false })
+      .returns<(ListeningSession & { affirmations: { title: string } | null })[]>();
+
+    if (error) throw error;
+    return data ?? [];
+  };
+
+  return { createSession, completeSession, saveDoodle, deleteSession, getSessionsForMonth, getAllSessions };
 }
