@@ -287,28 +287,28 @@ export default function DashboardScreen() {
 
         {todayCompleted ? (
           <>
+            {/* 3-dot menu — top-right of sheet */}
+            <Pressable
+              style={styles.menuButton}
+              onPress={() => setMenuOpen(true)}
+            >
+              <Ionicons name="ellipsis-horizontal" size={16} color={COLORS.text} />
+            </Pressable>
+
             {/* Completion: Expanded content */}
             {sheetExpanded && (
               <View style={styles.sheetContent}>
                 {/* Doodle Preview */}
                 <View style={styles.doodlePreviewWrapper}>
-                  <View>
-                    {todayDoodle && (
-                      <DoodleThumbnail
-                        doodleData={todayDoodle}
-                        width={vw * 0.45}
-                        height={vw * 0.45 * 1.5}
-                        inverted
-                        borderRadius={16}
-                      />
-                    )}
-                    <Pressable
-                      style={styles.menuButton}
-                      onPress={() => setMenuOpen(true)}
-                    >
-                      <Ionicons name="ellipsis-horizontal" size={16} color="#fff" />
-                    </Pressable>
-                  </View>
+                  {todayDoodle && (
+                    <DoodleThumbnail
+                      doodleData={todayDoodle}
+                      width={vw * 0.45}
+                      height={vw * 0.45 * 1.5}
+                      inverted
+                      borderRadius={16}
+                    />
+                  )}
                 </View>
 
                 {/* Affirmation info */}
@@ -342,13 +342,15 @@ export default function DashboardScreen() {
             {/* Share button — only when expanded */}
             {sheetExpanded && (
               <View style={styles.ctaArea}>
-                <Button
-                  label="Share"
-                  variant="outlined"
+                <Pressable
+                  style={styles.shareButton}
                   onPress={() => {
                     // Share functionality — future M5
                   }}
-                />
+                >
+                  <Ionicons name="share-outline" size={18} color={COLORS.white} />
+                  <Text style={styles.shareLabel}>Share</Text>
+                </Pressable>
               </View>
             )}
 
@@ -545,7 +547,7 @@ const styles = StyleSheet.create({
   completionInfo: {
     alignItems: 'center',
     gap: 4,
-    marginBottom: 8,
+    marginBottom: 24,
   },
   completionTitle: {
     fontFamily: FONTS.bodyBold,
@@ -572,15 +574,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  // Share button
+  shareButton: {
+    height: 63,
+    borderRadius: 32,
+    backgroundColor: COLORS.text,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  shareLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+
   // 3-dot menu
   menuButton: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 10,
+    right: 16,
+    zIndex: 10,
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
