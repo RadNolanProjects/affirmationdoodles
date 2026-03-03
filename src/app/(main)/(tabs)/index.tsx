@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Modal,
@@ -28,7 +28,8 @@ type SessionWithTitle = ListeningSession & {
 
 const SHEET_COLLAPSED = 130;
 const SHEET_COLLAPSED_COMPLETE = 80;
-const SHEET_EXPANDED = 500;
+const SHEET_EXPANDED_DEFAULT = 340;
+const SHEET_EXPANDED_COMPLETE = 500;
 const SNAP_THRESHOLD = 60;
 
 function parseDoodleData(raw: string | null): DoodleData | null {
@@ -48,10 +49,12 @@ export default function DashboardScreen() {
   const [sessions, setSessions] = useState<SessionWithTitle[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Sheet state
+  // Sheet state — use refs so panResponder closures read current values
   const [sheetExpanded, setSheetExpanded] = useState(true);
-  const sheetHeight = useRef(new Animated.Value(SHEET_EXPANDED)).current;
-  const lastHeight = useRef(SHEET_EXPANDED);
+  const expandedRef = useRef(SHEET_EXPANDED_DEFAULT);
+  const completedRef = useRef(false);
+  const sheetHeight = useRef(new Animated.Value(SHEET_EXPANDED_DEFAULT)).current;
+  const lastHeight = useRef(SHEET_EXPANDED_DEFAULT);
 
   // Derive today's completion state
   const todayStr = useMemo(() => {
@@ -71,6 +74,23 @@ export default function DashboardScreen() {
   );
 
   const todayCompleted = !!todayDoodle;
+
+  // Keep refs in sync for panResponder closures
+  useEffect(() => {
+    const newExpanded = todayCompleted ? SHEET_EXPANDED_COMPLETE : SHEET_EXPANDED_DEFAULT;
+    expandedRef.current = newExpanded;
+    completedRef.current = todayCompleted;
+    // Re-animate sheet if currently expanded
+    if (sheetExpanded) {
+      lastHeight.current = newExpanded;
+      Animated.spring(sheetHeight, {
+        toValue: newExpanded,
+        useNativeDriver: false,
+        tension: 80,
+        friction: 12,
+      }).start();
+    }
+  }, [todayCompleted]);
 
   // Map date → doodle data for grid thumbnails
   const sessionsByDate = useMemo(() => {
@@ -92,20 +112,22 @@ export default function DashboardScreen() {
       onMoveShouldSetPanResponder: (_, gesture) =>
         Math.abs(gesture.dy) > 5,
       onPanResponderMove: (_, gesture) => {
-        const minH = todayCompleted ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
+        const minH = completedRef.current ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
+        const maxH = expandedRef.current;
         const newHeight = Math.max(
           minH,
-          Math.min(SHEET_EXPANDED, lastHeight.current - gesture.dy)
+          Math.min(maxH, lastHeight.current - gesture.dy)
         );
         sheetHeight.setValue(newHeight);
       },
       onPanResponderRelease: (_, gesture) => {
-        const minH = todayCompleted ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
+        const minH = completedRef.current ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
+        const maxH = expandedRef.current;
         const currentHeight = lastHeight.current - gesture.dy;
         const shouldExpand = gesture.dy < -SNAP_THRESHOLD ||
-          (currentHeight > (minH + SHEET_EXPANDED) / 2 && gesture.dy <= SNAP_THRESHOLD);
+          (currentHeight > (minH + maxH) / 2 && gesture.dy <= SNAP_THRESHOLD);
 
-        const target = shouldExpand ? SHEET_EXPANDED : minH;
+        const target = shouldExpand ? maxH : minH;
         lastHeight.current = target;
         setSheetExpanded(shouldExpand);
 
@@ -120,7 +142,7 @@ export default function DashboardScreen() {
   ).current;
 
   const toggleSheet = () => {
-    const target = sheetExpanded ? collapsedHeight : SHEET_EXPANDED;
+    const target = sheetExpanded ? collapsedHeight : expandedRef.current;
     lastHeight.current = target;
     setSheetExpanded(!sheetExpanded);
     Animated.spring(sheetHeight, {
@@ -273,7 +295,7 @@ export default function DashboardScreen() {
         </View>
 
         {/* Extra space so content isn't hidden behind sheet */}
-        <View style={{ height: SHEET_EXPANDED + 20 }} />
+        <View style={{ height: SHEET_EXPANDED_COMPLETE + 20 }} />
       </ScrollView>
 
       {/* Bottom Sheet */}
