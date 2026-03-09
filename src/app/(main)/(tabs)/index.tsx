@@ -394,8 +394,8 @@ export default function DashboardScreen() {
                   {todayDoodle && (
                     <DoodleThumbnail
                       doodleData={todayDoodle}
-                      width={vw * 0.45}
-                      height={vw * 0.45 * 1.5}
+                      width={Math.min(vw * 0.45, 180)}
+                      height={Math.min(vw * 0.45 * 1.5, 270)}
                       inverted
                       borderRadius={16}
                     />
