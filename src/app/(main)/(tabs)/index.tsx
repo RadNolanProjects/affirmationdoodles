@@ -47,7 +47,7 @@ export default function DashboardScreen() {
   const { signOut } = useAuth();
   const { width: vw } = useWindowDimensions();
   const { affirmations, isLoading, fetchAffirmations } = useAffirmations();
-  const { getAllSessions, deleteSession } = useListeningSession();
+  const { getAllSessions, deleteSession, createSession } = useListeningSession();
   const [sessions, setSessions] = useState<SessionWithTitle[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewSession, setViewSession] = useState<SessionWithTitle | null>(null);
@@ -95,15 +95,11 @@ export default function DashboardScreen() {
     }
   }, [todayCompleted]);
 
-  // Deduplicate sessions by date (keep doodle version), newest first
+  // All completed sessions, newest first (allows multiple per day)
   const uniqueSessions = useMemo(() => {
-    const map = new Map<string, SessionWithTitle>();
-    for (const s of sessions) {
-      if (!map.has(s.listened_at) || (s.doodle_data && !map.get(s.listened_at)?.doodle_data)) {
-        map.set(s.listened_at, s);
-      }
-    }
-    return [...map.values()].sort((a, b) => b.listened_at.localeCompare(a.listened_at));
+    return [...sessions]
+      .filter((s) => s.doodle_data)
+      .sort((a, b) => b.listened_at.localeCompare(a.listened_at));
   }, [sessions]);
 
   const collapsedHeight = todayCompleted ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
@@ -193,6 +189,23 @@ export default function DashboardScreen() {
     }
   };
 
+  const handleLogAgain = async () => {
+    setMenuOpen(false);
+    const active = affirmations.filter((a) => a.is_active && a.audio_url);
+    if (active.length === 0) return;
+    const random = active[Math.floor(Math.random() * active.length)];
+    try {
+      const session = await createSession(random.id);
+      router.push({
+        pathname: '/(main)/listen/doodle',
+        params: {
+          sessionId: session.id,
+          affirmationTitle: random.title,
+        },
+      });
+    } catch {}
+  };
+
   // View modal for past doodles
   const viewDoodle = useMemo(
     () => parseDoodleData(viewSession?.doodle_data ?? null),
@@ -229,6 +242,23 @@ export default function DashboardScreen() {
         await loadHistory();
       } catch {}
     }
+  };
+
+  const handleViewLogAgain = async () => {
+    setViewSession(null);
+    const active = affirmations.filter((a) => a.is_active && a.audio_url);
+    if (active.length === 0) return;
+    const random = active[Math.floor(Math.random() * active.length)];
+    try {
+      const session = await createSession(random.id);
+      router.push({
+        pathname: '/(main)/listen/doodle',
+        params: {
+          sessionId: session.id,
+          affirmationTitle: random.title,
+        },
+      });
+    } catch {}
   };
 
   const heroText = 'I am more\nthan enough';
@@ -432,6 +462,11 @@ export default function DashboardScreen() {
                     <Text style={styles.menuItemText}>Redo Doodle</Text>
                   </Pressable>
                   <View style={styles.menuDivider} />
+                  <Pressable style={styles.menuItem} onPress={handleLogAgain}>
+                    <Ionicons name="add-circle-outline" size={18} color={COLORS.text} />
+                    <Text style={styles.menuItemText}>Log Again</Text>
+                  </Pressable>
+                  <View style={styles.menuDivider} />
                   <Pressable style={styles.menuItem} onPress={handleDeleteEntry}>
                     <Ionicons name="trash-outline" size={18} color="#D14" />
                     <Text style={[styles.menuItemText, { color: '#D14' }]}>Delete Entry</Text>
@@ -541,6 +576,11 @@ export default function DashboardScreen() {
               <Pressable style={styles.menuItem} onPress={handleViewRedoDoodle}>
                 <Ionicons name="refresh" size={18} color={COLORS.text} />
                 <Text style={styles.menuItemText}>Redo Doodle</Text>
+              </Pressable>
+              <View style={styles.menuDivider} />
+              <Pressable style={styles.menuItem} onPress={handleViewLogAgain}>
+                <Ionicons name="add-circle-outline" size={18} color={COLORS.text} />
+                <Text style={styles.menuItemText}>Log Again</Text>
               </Pressable>
               <View style={styles.menuDivider} />
               <Pressable style={styles.menuItem} onPress={handleViewDeleteEntry}>
