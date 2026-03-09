@@ -10,7 +10,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +21,7 @@ import { COLORS, FONTS } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
 import { AffirmationCard } from '@/components/affirmation/AffirmationCard';
 import { DoodleThumbnail } from '@/components/doodle/DoodleThumbnail';
+import { Confetti } from '@/components/ui/Confetti';
 import type { DoodleData, ListeningSession } from '@/types';
 
 type SessionWithTitle = ListeningSession & {
@@ -47,10 +48,16 @@ export default function DashboardScreen() {
   const { signOut } = useAuth();
   const { width: vw } = useWindowDimensions();
   const { affirmations, isLoading, fetchAffirmations } = useAffirmations();
-  const { getAllSessions, deleteSession } = useListeningSession();
+  const { getAllSessions, deleteSession, createSession } = useListeningSession();
   const [sessions, setSessions] = useState<SessionWithTitle[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewSession, setViewSession] = useState<SessionWithTitle | null>(null);
+  const [celebrationVisible, setCelebrationVisible] = useState(false);
+  const celebrationHandled = useRef(false);
+  const { justCompleted, completedTitle } = useLocalSearchParams<{
+    justCompleted?: string;
+    completedTitle?: string;
+  }>();
 
   // Sheet state — use refs so panResponder closures read current values
   const [sheetExpanded, setSheetExpanded] = useState(true);
@@ -95,15 +102,11 @@ export default function DashboardScreen() {
     }
   }, [todayCompleted]);
 
-  // Deduplicate sessions by date (keep doodle version), newest first
+  // All completed sessions, newest first (allows multiple per day)
   const uniqueSessions = useMemo(() => {
-    const map = new Map<string, SessionWithTitle>();
-    for (const s of sessions) {
-      if (!map.has(s.listened_at) || (s.doodle_data && !map.get(s.listened_at)?.doodle_data)) {
-        map.set(s.listened_at, s);
-      }
-    }
-    return [...map.values()].sort((a, b) => b.listened_at.localeCompare(a.listened_at));
+    return [...sessions]
+      .filter((s) => s.doodle_data)
+      .sort((a, b) => b.listened_at.localeCompare(a.listened_at));
   }, [sessions]);
 
   const collapsedHeight = todayCompleted ? SHEET_COLLAPSED_COMPLETE : SHEET_COLLAPSED;
@@ -163,6 +166,14 @@ export default function DashboardScreen() {
     }, [])
   );
 
+  // Show celebration modal when returning from doodle completion
+  useEffect(() => {
+    if (justCompleted === '1' && !celebrationHandled.current) {
+      celebrationHandled.current = true;
+      setCelebrationVisible(true);
+    }
+  }, [justCompleted]);
+
   const loadHistory = async () => {
     try {
       const data = await getAllSessions();
@@ -191,6 +202,23 @@ export default function DashboardScreen() {
         await loadHistory();
       } catch {}
     }
+  };
+
+  const handleLogAgain = async () => {
+    setMenuOpen(false);
+    const active = affirmations.filter((a) => a.is_active && a.audio_url);
+    if (active.length === 0) return;
+    const random = active[Math.floor(Math.random() * active.length)];
+    try {
+      const session = await createSession(random.id);
+      router.push({
+        pathname: '/(main)/listen/doodle',
+        params: {
+          sessionId: session.id,
+          affirmationTitle: random.title,
+        },
+      });
+    } catch {}
   };
 
   // View modal for past doodles
@@ -229,6 +257,23 @@ export default function DashboardScreen() {
         await loadHistory();
       } catch {}
     }
+  };
+
+  const handleViewLogAgain = async () => {
+    setViewSession(null);
+    const active = affirmations.filter((a) => a.is_active && a.audio_url);
+    if (active.length === 0) return;
+    const random = active[Math.floor(Math.random() * active.length)];
+    try {
+      const session = await createSession(random.id);
+      router.push({
+        pathname: '/(main)/listen/doodle',
+        params: {
+          sessionId: session.id,
+          affirmationTitle: random.title,
+        },
+      });
+    } catch {}
   };
 
   const heroText = 'I am more\nthan enough';
@@ -364,8 +409,8 @@ export default function DashboardScreen() {
                   {todayDoodle && (
                     <DoodleThumbnail
                       doodleData={todayDoodle}
-                      width={vw * 0.45}
-                      height={vw * 0.45 * 1.5}
+                      width={Math.min(vw * 0.45, 180)}
+                      height={Math.min(vw * 0.45 * 1.5, 270)}
                       inverted
                       borderRadius={16}
                     />
@@ -432,6 +477,11 @@ export default function DashboardScreen() {
                     <Text style={styles.menuItemText}>Redo Doodle</Text>
                   </Pressable>
                   <View style={styles.menuDivider} />
+                  <Pressable style={styles.menuItem} onPress={handleLogAgain}>
+                    <Ionicons name="add-circle-outline" size={18} color={COLORS.text} />
+                    <Text style={styles.menuItemText}>Log Again</Text>
+                  </Pressable>
+                  <View style={styles.menuDivider} />
                   <Pressable style={styles.menuItem} onPress={handleDeleteEntry}>
                     <Ionicons name="trash-outline" size={18} color="#D14" />
                     <Text style={[styles.menuItemText, { color: '#D14' }]}>Delete Entry</Text>
@@ -482,6 +532,64 @@ export default function DashboardScreen() {
           </>
         )}
       </Animated.View>
+
+      {/* Celebration modal — shown after completing a doodle */}
+      <Modal
+        visible={celebrationVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCelebrationVisible(false)}
+      >
+        <View style={styles.celebrationOverlay}>
+          <Confetti active={celebrationVisible} />
+          <View style={styles.celebrationCard} onStartShouldSetResponder={() => true}>
+            {/* Handle bar */}
+            <View style={styles.celebrationHandle} />
+
+            {/* Doodle Preview */}
+            <View style={styles.celebrationDoodleWrapper}>
+              {todayDoodle && (
+                <DoodleThumbnail
+                  doodleData={todayDoodle}
+                  width={Math.min(vw * 0.5, 200)}
+                  height={Math.min(vw * 0.5 * 1.5, 300)}
+                  inverted
+                  borderRadius={16}
+                />
+              )}
+            </View>
+
+            {/* Title and date */}
+            <Text style={styles.celebrationTitle}>
+              {completedTitle || todaySession?.affirmations?.title || "Today's Affirmation"}
+            </Text>
+            <Text style={styles.celebrationDate}>Today</Text>
+
+            {/* Divider */}
+            <View style={styles.celebrationDivider} />
+
+            {/* Record another CTA */}
+            <Text style={styles.celebrationPrompt}>Keep expanding your library!</Text>
+            <Pressable
+              style={styles.celebrationButton}
+              onPress={() => {
+                setCelebrationVisible(false);
+                router.push('/(main)/create');
+              }}
+            >
+              <Text style={styles.celebrationButtonLabel}>Record another</Text>
+            </Pressable>
+
+            {/* Close */}
+            <Pressable
+              style={styles.celebrationClose}
+              onPress={() => setCelebrationVisible(false)}
+            >
+              <Text style={styles.celebrationCloseLabel}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* Past doodle view modal */}
       <Modal
@@ -541,6 +649,11 @@ export default function DashboardScreen() {
               <Pressable style={styles.menuItem} onPress={handleViewRedoDoodle}>
                 <Ionicons name="refresh" size={18} color={COLORS.text} />
                 <Text style={styles.menuItemText}>Redo Doodle</Text>
+              </Pressable>
+              <View style={styles.menuDivider} />
+              <Pressable style={styles.menuItem} onPress={handleViewLogAgain}>
+                <Ionicons name="add-circle-outline" size={18} color={COLORS.text} />
+                <Text style={styles.menuItemText}>Log Again</Text>
               </Pressable>
               <View style={styles.menuDivider} />
               <Pressable style={styles.menuItem} onPress={handleViewDeleteEntry}>
@@ -768,6 +881,83 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(0,0,0,0.1)',
     marginHorizontal: 20,
+  },
+
+  // Celebration modal
+  celebrationOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  celebrationCard: {
+    backgroundColor: '#FAFAFC',
+    borderRadius: 20,
+    paddingTop: 16,
+    paddingBottom: 28,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+    width: '85%',
+  },
+  celebrationHandle: {
+    width: 32,
+    height: 4,
+    borderRadius: 45,
+    backgroundColor: COLORS.text,
+    opacity: 0.12,
+    marginBottom: 24,
+  },
+  celebrationDoodleWrapper: {
+    marginBottom: 20,
+  },
+  celebrationTitle: {
+    fontFamily: FONTS.bodyBold,
+    fontSize: 18,
+    color: COLORS.text,
+    textDecorationLine: 'underline',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  celebrationDate: {
+    fontFamily: FONTS.bodyRegular,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginBottom: 24,
+  },
+  celebrationDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    alignSelf: 'stretch',
+    marginBottom: 24,
+  },
+  celebrationPrompt: {
+    fontFamily: FONTS.bodyRegular,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginBottom: 16,
+  },
+  celebrationButton: {
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+    marginBottom: 16,
+  },
+  celebrationButtonLabel: {
+    fontFamily: FONTS.bodyBold,
+    fontSize: 17,
+    color: COLORS.white,
+  },
+  celebrationClose: {
+    paddingVertical: 8,
+  },
+  celebrationCloseLabel: {
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 15,
+    color: COLORS.text,
+    textDecorationLine: 'underline',
   },
 
   // Past doodle view modal

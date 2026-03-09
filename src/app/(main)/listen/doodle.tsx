@@ -42,7 +42,10 @@ export default function DoodleScreen() {
       const doodleJson = JSON.stringify(canvasData);
       await saveDoodle(sessionId, doodleJson);
       router.dismissAll();
-      router.replace('/(main)/(tabs)');
+      router.replace({
+        pathname: '/(main)/(tabs)',
+        params: { justCompleted: '1', completedTitle: affirmationTitle ?? '' },
+      });
     } catch {
       setSaving(false);
     }
