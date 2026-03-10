@@ -6,27 +6,56 @@ import {
   Text,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { GradientOverlay } from '@/components/ui/GradientOverlay';
 import { useAffirmations } from '@/hooks/useAffirmations';
 import { usePlayback } from '@/hooks/usePlayback';
 import { useListeningSession } from '@/hooks/useListeningSession';
+import { getAudioUrl } from '@/lib/storage';
 import { COLORS, FONTS } from '@/lib/constants';
+import type { Affirmation } from '@/types';
 
 export default function ListenScreen() {
   const { affirmations } = useAffirmations();
+  const { playlistIds: playlistIdsParam } = useLocalSearchParams<{ playlistIds?: string }>();
   const { createSession } = useListeningSession();
   const scrollRef = useRef<ScrollView>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const trackCompletedRef = useRef(false);
 
-  // Pick a random active affirmation with audio
-  const affirmation = useMemo(() => {
+  // Build playlist from params or fallback to single random
+  const playlist = useMemo(() => {
+    if (playlistIdsParam) {
+      const ids = playlistIdsParam.split(',');
+      return ids
+        .map((id) => affirmations.find((a) => a.id === id))
+        .filter(Boolean) as Affirmation[];
+    }
     const active = affirmations.filter((a) => a.is_active && a.audio_url);
-    if (active.length === 0) return null;
-    return active[Math.floor(Math.random() * active.length)];
-  }, [affirmations]);
+    if (active.length === 0) return [];
+    return [active[Math.floor(Math.random() * active.length)]];
+  }, [affirmations, playlistIdsParam]);
+
+  // Pre-fetch all signed URLs upfront so track switches are instant
+  const [urlCache, setUrlCache] = useState<Record<string, string>>({});
+  useEffect(() => {
+    playlist.forEach((aff) => {
+      if (aff.audio_url && !urlCache[aff.audio_url]) {
+        getAudioUrl(aff.audio_url).then((url) => {
+          setUrlCache((prev) => ({ ...prev, [aff.audio_url!]: url }));
+        }).catch(() => {});
+      }
+    });
+  }, [playlist]);
+
+  const currentAffirmation = playlist[currentIndex] ?? null;
+  const totalTracks = playlist.length;
+  const currentResolvedUrl = currentAffirmation?.audio_url
+    ? urlCache[currentAffirmation.audio_url] ?? null
+    : null;
 
   const {
     scriptLines,
@@ -38,14 +67,21 @@ export default function ListenScreen() {
     play,
     pause,
     status,
-  } = usePlayback(affirmation);
+  } = usePlayback(currentAffirmation, { autoPlay: true, resolvedUrl: currentResolvedUrl });
 
-  // Create session on mount
+  // Create session on mount (one session per playlist run)
   useEffect(() => {
-    if (affirmation && !sessionId) {
-      createSession(affirmation.id).then((s) => setSessionId(s.id)).catch(() => {});
+    if (currentAffirmation && !sessionId) {
+      createSession(currentAffirmation.id)
+        .then((s) => setSessionId(s.id))
+        .catch(() => {});
     }
-  }, [affirmation?.id]);
+  }, [currentAffirmation?.id]);
+
+  // Reset completion flag when track changes
+  useEffect(() => {
+    trackCompletedRef.current = false;
+  }, [currentIndex]);
 
   // Scroll to current line
   useEffect(() => {
@@ -55,22 +91,49 @@ export default function ListenScreen() {
     });
   }, [currentLineIndex]);
 
-  // Handle playback complete
+  // Handle track completion — advance playlist or finish
   useEffect(() => {
-    if (status.isLoaded && !status.playing && currentTime > 0 && duration > 0 && currentTime >= duration - 0.5) {
-      handleComplete();
+    if (trackCompletedRef.current) return;
+    if (
+      status.isLoaded &&
+      !status.playing &&
+      currentTime > 0 &&
+      duration > 0 &&
+      currentTime >= duration - 0.5
+    ) {
+      trackCompletedRef.current = true;
+      if (currentIndex < totalTracks - 1) {
+        setCurrentIndex((prev) => prev + 1);
+      } else {
+        handleComplete();
+      }
     }
   }, [status.playing, currentTime, duration, status.isLoaded]);
 
-  const handleComplete = useCallback(async () => {
+  const handleComplete = useCallback(() => {
     router.replace({
       pathname: '/(main)/listen/doodle',
       params: {
         sessionId: sessionId ?? '',
-        affirmationTitle: affirmation?.title ?? '',
+        affirmationTitle: playlist[0]?.title ?? '',
       },
     });
-  }, [sessionId, affirmation?.title]);
+  }, [sessionId, playlist]);
+
+  // Compute total playlist duration and elapsed time across all tracks
+  const totalPlaylistDuration = useMemo(
+    () => playlist.reduce((sum, a) => sum + (a.audio_duration_seconds ?? 0), 0),
+    [playlist]
+  );
+
+  const elapsedTime = useMemo(() => {
+    let elapsed = 0;
+    for (let i = 0; i < currentIndex; i++) {
+      elapsed += playlist[i]?.audio_duration_seconds ?? 0;
+    }
+    elapsed += currentTime;
+    return elapsed;
+  }, [playlist, currentIndex, currentTime]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -78,14 +141,7 @@ export default function ListenScreen() {
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
-  // Auto-play when loaded
-  useEffect(() => {
-    if (isLoaded && !isPlaying) {
-      play();
-    }
-  }, [isLoaded]);
-
-  if (!affirmation) {
+  if (!currentAffirmation) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.emptyContainer}>
@@ -137,19 +193,44 @@ export default function ListenScreen() {
 
       {/* Playback Controls */}
       <View style={styles.controls}>
-        <Text style={styles.timeDisplay}>{formatTime(currentTime)}</Text>
+        {/* Time: current/total */}
+        <View style={styles.timeRow}>
+          <Text style={styles.timeCurrent}>{formatTime(elapsedTime)}</Text>
+          <Text style={styles.timeTotal}>/{formatTime(totalPlaylistDuration)}</Text>
+        </View>
 
-        {/* Simple progress bar */}
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              {
-                width:
-                  duration > 0 ? `${(currentTime / duration) * 100}%` : '0%',
-              },
-            ]}
-          />
+        {/* Segmented progress bar */}
+        <View style={styles.segmentRow}>
+          {playlist.map((track, i) => {
+            const trackDuration = track.audio_duration_seconds ?? 0;
+            const isActive = i === currentIndex;
+            const isDone = i < currentIndex;
+            const fillPercent = isDone
+              ? 100
+              : isActive && trackDuration > 0
+                ? Math.min((currentTime / trackDuration) * 100, 100)
+                : 0;
+
+            return (
+              <View
+                key={track.id}
+                style={[
+                  styles.segment,
+                  isActive ? styles.segmentActive : styles.segmentInactive,
+                ]}
+              >
+                {fillPercent > 0 && (
+                  <View
+                    style={[
+                      styles.segmentFill,
+                      { width: `${fillPercent}%` },
+                      isActive ? styles.segmentFillActive : styles.segmentFillDone,
+                    ]}
+                  />
+                )}
+              </View>
+            );
+          })}
         </View>
 
         <Pressable
@@ -213,32 +294,63 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     gap: 16,
   },
-  timeDisplay: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  timeCurrent: {
+    fontFamily: FONTS.bodyBold,
+    fontSize: 16,
+    color: COLORS.text,
     fontVariant: ['tabular-nums'],
   },
-  progressBar: {
-    width: '60%',
-    height: 3,
-    backgroundColor: COLORS.border,
-    borderRadius: 2,
+  timeTotal: {
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 13,
+    color: COLORS.text,
+    opacity: 0.6,
+    fontVariant: ['tabular-nums'],
   },
-  progressFill: {
+  segmentRow: {
+    flexDirection: 'row',
+    gap: 4,
+    width: '70%',
+    alignItems: 'center',
+  },
+  segment: {
+    flex: 1,
+    borderRadius: 100,
+    overflow: 'hidden',
+  },
+  segmentActive: {
+    height: 5,
+    backgroundColor: 'rgba(45,30,60,0.2)',
+  },
+  segmentInactive: {
+    height: 3,
+    backgroundColor: 'rgba(45,30,60,0.2)',
+  },
+  segmentFill: {
     height: '100%',
-    backgroundColor: COLORS.text,
-    borderRadius: 2,
+    borderRadius: 100,
+  },
+  segmentFillActive: {
+    backgroundColor: 'rgba(45,30,60,0.5)',
+  },
+  segmentFillDone: {
+    backgroundColor: 'rgba(45,30,60,0.5)',
   },
   playPauseButton: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: COLORS.text,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   playIcon: {
-    color: COLORS.white,
+    color: COLORS.text,
     fontSize: 24,
     marginLeft: 4,
   },
@@ -249,7 +361,7 @@ const styles = StyleSheet.create({
   pauseBar: {
     width: 5,
     height: 24,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.text,
     borderRadius: 3,
   },
   emptyContainer: {
