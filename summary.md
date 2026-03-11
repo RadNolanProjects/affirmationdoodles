@@ -2,20 +2,20 @@
 
 ## What Is This App?
 
-Affirm is a mobile-first daily affirmations app. Users record affirmations in their own voice, listen to them daily, and cap each session with a quick doodle. Over time, the doodle history builds into a visual calendar. The PRD lives at `affirm-prd.md`.
+Affirm is a mobile-first daily affirmations app. Users record affirmations in their own voice, listen to them daily, and cap each session with a quick doodle. Over time, the doodle history builds into a visual grid of all past entries. The PRD lives at `affirm-prd.md`.
 
 ---
 
 ## What Was Built
 
-### Scope: M1 (Foundation) + M2 (Record) + M3 (Listen + Doodle)
+### Scope: M1 (Foundation) + M2 (Record) + M3 (Listen + Doodle) + M4 (Playlist + Library)
 
-The goal: a user can record an affirmation, listen to it, doodle after listening, and see their doodle history on the dashboard.
+The goal: a user can record an affirmation, listen to it, doodle after listening, and see their doodle history on the dashboard. M4 added playlist playback of multiple affirmations and an in-sheet library management experience.
 
 ### Tech Stack
 
 | Layer | Technology | Version |
-|-------|-----------|---------|
+|-------|------------|---------|
 | Framework | React Native (Expo) | SDK 55 |
 | Routing | expo-router (file-based) | ~55.0.3 |
 | Backend | Supabase (Postgres + Auth + Storage) | supabase-js 2.98 |
@@ -40,89 +40,92 @@ The goal: a user can record an affirmation, listen to it, doodle after listening
 - **AffirmationCard** is a shared component used by both the dashboard (without menu) and manage screen (with "..." menu for Re-record/Delete). Uses `useAudioPlayer`/`useAudioPlayerStatus` from expo-audio for inline playback.
 - **Doodle drawing** uses `react-native-svg` with `PanResponder` for cross-platform drawing. Strokes are stored as arrays of `{x, y}` points and rendered as SVG `<Path>` elements with quadratic bezier smoothing. Canvas data (strokes + dimensions) is serialized as JSON and stored in `listening_sessions.doodle_data`.
 - **Doodle thumbnails** are rendered inline as SVG at any size/color using the `DoodleThumbnail` component. The dashboard grid shows inverted thumbnails (white strokes on dark background) by re-rendering the stroke data — no image downloads needed for the grid.
+- **Playlist audio preloading**: All signed URLs for playlist tracks are fetched in parallel on mount via `getAudioUrl()`. When switching tracks, the URL is already resolved so the player can load immediately without waiting for the async URL fetch.
+- **Auto-play between tracks**: `usePlayback` accepts an `autoPlay` option and a `resolvedUrl` for pre-fetched URLs. It uses a `readySource` state to track when the player has genuinely loaded the new audio (not stale state from the previous track), then triggers `player.play()` automatically.
 
 ---
 
 ## File Structure
 
-```
+
 affirmationdoodles/
-├── .env                          # Supabase URL + key
-├── app.json                      # Expo config (scheme: "affirm", audio permissions)
-├── tsconfig.json                 # Path alias @/* -> ./src/*
-├── package.json                  # main: "expo-router/entry"
-├── affirm-prd.md                 # Full product requirements document
-├── supabase-migration.sql        # Initial SQL to run in Supabase dashboard
+├── .env # Supabase URL + key
+├── app.json # Expo config (scheme: "affirm", audio permissions)
+├── tsconfig.json # Path alias @/* -> ./src/*
+├── package.json # main: "expo-router/entry"
+├── affirm-prd.md # Full product requirements document
+├── supabase-migration.sql # Initial SQL to run in Supabase dashboard
 ├── supabase-migration-doodles.sql # Doodle support migration (add columns + storage bucket)
 │
 └── src/
-    ├── app/                      # expo-router file-based routes
-    │   ├── _layout.tsx           # Root: loads Geist fonts, AuthProvider, splash screen
-    │   ├── index.tsx             # Auth gate: redirects to (auth) or (main)
-    │   │
-    │   ├── (auth)/
-    │   │   ├── _layout.tsx       # Auth stack
-    │   │   ├── sign-in.tsx       # Email input + "Send magic link" button
-    │   │   └── verify.tsx        # "Check your email" + deep link handler
-    │   │
-    │   └── (main)/
-    │       ├── _layout.tsx       # Protected routes (redirects if not authed)
-    │       ├── manage.tsx        # All Affirmations list (modal presentation)
-    │       │
-    │       ├── (tabs)/
-    │       │   ├── _layout.tsx   # Stack (not tabs yet — placeholder for future)
-    │       │   └── index.tsx     # Dashboard: hero text, history grid with doodle thumbnails, bottom sheet
-    │       │
-    │       ├── create/
-    │       │   ├── _layout.tsx   # Create flow stack (explicit screen registrations)
-    │       │   ├── index.tsx     # Choose method: pre-written scripts, write own, just talk
-    │       │   ├── customize.tsx # Edit a pre-written script before recording
-    │       │   ├── custom.tsx    # Write your own script from scratch
-    │       │   └── record.tsx    # Record screen with speech recognition + word highlighting
-    │       │
-    │       └── listen/
-    │           ├── _layout.tsx   # Listen flow stack (explicit screen registrations)
-    │           ├── index.tsx     # "Hear it." playback with synced scrolling text
-    │           ├── doodle.tsx    # "Doodle time!" drawing canvas after listening
-    │           └── complete.tsx  # "Done." session complete screen (legacy fallback)
-    │
-    ├── components/
-    │   ├── ui/
-    │   │   ├── Button.tsx        # Filled (dark) and outlined variants, 63px height
-    │   │   ├── BottomBar.tsx     # Back arrow + CTA button, fixed bottom
-    │   │   ├── Card.tsx          # White bg, rounded corners, border
-    │   │   ├── GradientOverlay.tsx # Top/bottom fade for scrolling text areas
-    │   │   └── ScreenHeader.tsx  # Geist 600SemiBold, 24vw responsive, line-height 0.8
-    │   │
-    │   ├── affirmation/
-    │   │   ├── AffirmationCard.tsx  # Play/stop, waveform, title/date, script accordion, optional menu
-    │   │   ├── Waveform.tsx         # Audio waveform bars (Web Audio API decode, placeholder on native)
-    │   │   └── PreWrittenScriptCard.tsx  # Horizontal scrollable script card
-    │   │
-    │   └── doodle/
-    │       ├── DoodleCanvas.tsx     # SVG drawing canvas with PanResponder, undo support
-    │       └── DoodleThumbnail.tsx  # Renders stroke data as SVG at any size/color scheme
-    │
-    ├── contexts/
-    │   └── AuthContext.tsx        # Session state, signInWithMagicLink, signOut (platform-aware)
-    │
-    ├── hooks/
-    │   ├── useAffirmations.ts    # CRUD for affirmations table
-    │   ├── usePreWrittenScripts.ts # Fetch pre-written scripts
-    │   ├── useRecording.ts       # Wraps expo-audio recorder, prepareToRecordAsync, cumulative duration
-    │   ├── usePlayback.ts        # Wraps expo-audio player with text line sync
-    │   ├── useListeningSession.ts # Create/complete sessions, save doodle data, monthly query with joins
-    │   └── useSpeechRecognition.ts # Web Speech API for real-time word detection
-    │
-    ├── lib/
-    │   ├── supabase.ts           # Supabase client singleton
-    │   ├── database.types.ts     # Full Supabase DB types (profiles, affirmations, etc.)
-    │   ├── storage.ts            # uploadAudio (platform-aware: blob fetch on web, File on native)
-    │   └── constants.ts          # COLORS, FONTS, STORAGE bucket config, DOODLE styling constants
-    │
-    └── types/
-        └── index.ts              # Affirmation, ListeningSession, PreWrittenScript, DoodleData, etc.
-```
+├── app/ # expo-router file-based routes
+│ ├── _layout.tsx # Root: loads Geist fonts, AuthProvider, splash screen
+│ ├── index.tsx # Auth gate: redirects to (auth) or (main)
+│ │
+│ ├── (auth)/
+│ │ ├── _layout.tsx # Auth stack
+│ │ ├── sign-in.tsx # Email input + "Send magic link" button
+│ │ └── verify.tsx # "Check your email" + deep link handler
+│ │
+│ └── (main)/
+│ ├── _layout.tsx # Protected routes (redirects if not authed)
+│ ├── manage.tsx # All Affirmations list (modal presentation, legacy — replaced by in-sheet library)
+│ │
+│ ├── (tabs)/
+│ │ ├── _layout.tsx # Stack (not tabs yet — placeholder for future)
+│ │ └── index.tsx # Dashboard: hero text, history grid, bottom sheet (playlist + library + completed states)
+│ │
+│ ├── create/
+│ │ ├── _layout.tsx # Create flow stack (explicit screen registrations)
+│ │ ├── index.tsx # Choose method: pre-written scripts, write own, just talk
+│ │ ├── customize.tsx # Edit a pre-written script before recording
+│ │ ├── custom.tsx # Write your own script from scratch
+│ │ └── record.tsx # Record screen with speech recognition + word highlighting
+│ │
+│ └── listen/
+│ ├── _layout.tsx # Listen flow stack (explicit screen registrations)
+│ ├── index.tsx # "Hear it." playlist playback with segmented progress, auto-advance
+│ ├── doodle.tsx # "Doodle time!" drawing canvas after listening
+│ └── complete.tsx # "Done." session complete screen (legacy fallback)
+│
+├── components/
+│ ├── ui/
+│ │ ├── Button.tsx # Filled (dark) and outlined variants, 63px height
+│ │ ├── BottomBar.tsx # Back arrow + CTA button, fixed bottom
+│ │ ├── Card.tsx # White bg, rounded corners, border
+│ │ ├── Confetti.tsx # Celebration confetti animation on doodle completion
+│ │ ├── GradientOverlay.tsx # Top/bottom fade for scrolling text areas
+│ │ └── ScreenHeader.tsx # Geist 600SemiBold, 24vw responsive, line-height 0.8
+│ │
+│ ├── affirmation/
+│ │ ├── AffirmationCard.tsx # Play/stop, waveform, title/date, script accordion, optional menu
+│ │ ├── Waveform.tsx # Audio waveform bars (Web Audio API decode, placeholder on native)
+│ │ └── PreWrittenScriptCard.tsx # Horizontal scrollable script card
+│ │
+│ └── doodle/
+│ ├── DoodleCanvas.tsx # SVG drawing canvas with PanResponder, undo support
+│ └── DoodleThumbnail.tsx # Renders stroke data as SVG at any size/color scheme
+│
+├── contexts/
+│ └── AuthContext.tsx # Session state, signInWithMagicLink, signOut (platform-aware)
+│
+├── hooks/
+│ ├── useAffirmations.ts # CRUD for affirmations table
+│ ├── usePreWrittenScripts.ts # Fetch pre-written scripts
+│ ├── useRecording.ts # Wraps expo-audio recorder, prepareToRecordAsync, cumulative duration
+│ ├── usePlayback.ts # Wraps expo-audio player with text line sync, autoPlay + resolvedUrl options
+│ ├── useListeningSession.ts # Create/complete sessions, save doodle data, getAllSessions, updateSessionDate
+│ └── useSpeechRecognition.ts # Web Speech API for real-time word detection
+│
+├── lib/
+│ ├── supabase.ts # Supabase client singleton
+│ ├── database.types.ts # Full Supabase DB types (profiles, affirmations, etc.)
+│ ├── storage.ts # uploadAudio (platform-aware: blob fetch on web, File on native), getAudioUrl, deleteAudio
+│ └── constants.ts # COLORS, FONTS, STORAGE bucket config, DOODLE styling constants
+│
+└── types/
+└── index.ts # Affirmation, ListeningSession, PreWrittenScript, DoodleData, etc.
+
 
 ---
 
@@ -172,19 +175,48 @@ All tables have row-level security. Users can only access their own data. `pre_w
 
 ### Dashboard (Home)
 - Large Geist hero text (24vw, responsive) — static "I am more than enough"
-- History grid: 7-column calendar for current month, responsive vw-based sizing
+- **History grid:** Reverse-chronological grid of all completed sessions (all-time, not monthly)
+  - Index 0 (top-left) = most recent doodle; last cell = first-ever doodle
+  - **Gray placeholder cells** for missed days: if today hasn't been completed and the last session was N days ago, N gray cells are prepended before the first doodle. Once a session is completed, the gray cell fills with the new doodle at position 0.
+  - Gap cells are also interleaved between sessions for skipped days
   - Grid cells: `#E8E2DB` background with 2px `#E8E2DB` border
-  - First day cell: `#2D1E3C` border
-  - Completed days without doodle: filled `#2D1E3C`
-  - Completed days with doodle: `#2D1E3C` background + inline SVG doodle thumbnail (white strokes)
+  - Completed cells with doodle: `#2D1E3C` background + inline SVG doodle thumbnail (white strokes)
+  - 140 trailing empty gray cells appended after real entries as an "empty state" representing pre-signup history
+  - `LinearGradient` overlay (transparent → `#FDF8ED`) covers bottom 60% of the grid, fading out the trailing cells
   - 7% vw padding on left/right
+  - Tapping a doodle cell opens a **view modal**: centered card with expanded doodle preview, affirmation title, formatted date ("Today" or "Month Day"), and a 3-dot menu with Redo Doodle / Delete Entry actions
+  - Data fetched via `getAllSessions()` (all completed sessions, ordered by `listened_at` desc)
 - **Bottom sheet modal** (draggable via PanResponder):
-  - **Normal mode** (no completion today):
+  - Scroll spacer is dynamic — `Animated.View` height tied to current `sheetHeight`, so collapsing the sheet reduces scrollable area
+  - **Playlist mode** (no completion today):
     - Collapsed state (130px): drag handle + CTA button only
-    - Expanded state (420px): Today's Affirmation card + "Manage" link + CTA button
+    - Expanded state (dynamic height based on playlist count): header + timeline list + CTA
+    - Header: "Today's affirmations ({total_duration})" with "Library" link
+    - **Timeline list** with checkboxes, play buttons, and connector lines:
+      - Each item has a checkbox (left), vertical connector lines (above/below play button), play/pause button, and title with duration
+      - Checkboxes: all checked by default, unchecking removes item from playlist and updates total duration
+      - Unchecked items: strikethrough text with 40% opacity
+      - Connector lines: 2px wide, 8px tall, opacity 0.15. First item top line = opacity 0, last item bottom line = opacity 0
+      - Each item has its own `useAudioPlayer` for inline preview playback
+      - Shared `playingId` state coordinates exclusive playback (only one at a time)
+      - Progress fill background on the active item
+    - "Start Affirmation" button passes only checked items to the listen screen
+    - Sheet height: `sheetHeightForCount(n)` calculates dynamically based on item count
   - **Completion mode** (today's session done with doodle):
     - Collapsed state (80px): drag handle + small doodle thumbnail + "X complete" text
-    - Expanded state (420px): large doodle preview (inverted colors) + affirmation title + "Today" + Share button
+    - Expanded state (500px): large doodle preview (inverted colors) + affirmation title + "Today"
+    - "Manage Affirmations" button opens the library view
+    - 3-dot menu (top-right) with Redo Doodle / Delete Entry
+  - **Library mode** (in-sheet, replaces manage.tsx page):
+    - Triggered by "Library" link or "Manage Affirmations" button
+    - 90vh max height, flexible based on content, scrollable when overflowing
+    - ManageItem cards with 8px gap:
+      - Play/pause with progress fill background
+      - Title, "Recorded {date}" label, duration
+      - Expandable script text with chevron
+      - Kebab menu (inline) with Re-record and Delete actions
+    - Bottom bar: back button (returns to playlist view) + "Add New" (goes to create flow)
+  - Pan responder disabled in library mode
   - Snap threshold at 60px, spring animation between states
   - Sheet bg: `#FAFAFC`, rounded top corners (25px), subtle shadow
 
@@ -194,14 +226,21 @@ All tables have row-level security. Users can only access their own data. `pre_w
 3. **Custom:** Empty text area with placeholder
 4. **Record:** Speech-recognition-powered recording screen
 
-### Manage Affirmations (modal)
-- FlatList of AffirmationCard components with waveform visualization
-- "..." menu with Re-record and Delete options
-- "+ Add New" button at bottom
-
-### Listen Flow (3 screens)
-1. **Hear it.:** Random active affirmation selected, audio playback with synced scrolling text, progress bar, play/pause
-2. **Doodle time!:** Drawing canvas after playback completes. Gray canvas (`#E8E2DB`), thick dark strokes (`#2D1E3C`, 5px). Undo button (circle, bottom-left) removes last stroke. "Save Doodle" button (disabled until first stroke) saves JSON stroke data to `listening_sessions.doodle_data` and navigates to dashboard.
+### Listen Flow (Playlist Playback)
+1. **Hear it.:** Plays a playlist of up to 5 affirmations in succession
+   - Accepts `playlistIds` route param (comma-separated IDs from checked items)
+   - Falls back to single random active affirmation if no params
+   - **Audio preloading**: all playlist URLs pre-fetched in parallel on mount
+   - **Auto-play**: tracks auto-advance when each finishes, using `usePlayback`'s `autoPlay` + `resolvedUrl` options
+   - **Time display**: `currentElapsed/totalPlaylistDuration` format (bold current, lighter total)
+   - **Segmented progress bar**: one segment per track with 4px gap
+     - Active segment: 5px tall, partially filled to current playback position
+     - Completed segments: 5px tall, fully filled
+     - Future segments: 3px tall, unfilled
+   - **Play/pause button**: outlined circle (border only), dark icons
+   - Synced scrolling text with gradient overlays
+   - Creates one listening session per playlist run
+2. **Doodle time!:** Drawing canvas after playback completes. Gray canvas (`#E8E2DB`), thick dark strokes (`#2D1E3C`, 5px). Undo button (circle, bottom-left) removes last stroke. "Save Doodle" button (disabled until first stroke) saves JSON stroke data to `listening_sessions.doodle_data` and navigates to dashboard with celebration confetti.
 3. **Complete (legacy):** "Done." screen — kept as fallback but primary flow goes Doodle → Dashboard
 
 ---
@@ -225,7 +264,7 @@ All tables have row-level security. Users can only access their own data. `pre_w
 - On "Save Doodle": stroke data + canvas dimensions serialized as JSON
 - Stored in `listening_sessions.doodle_data` column (TEXT)
 - Session also marked as completed via `completed_at` timestamp
-- Navigation: `router.dismissAll()` → `router.replace('/(main)/(tabs)')` back to dashboard
+- Navigation: `router.dismissAll()` → `router.replace('/(main)/(tabs)')` with `justCompleted` param triggering celebration confetti
 
 ### How Thumbnails Render
 - `DoodleThumbnail` component takes `DoodleData` + desired `width`/`height`
@@ -241,9 +280,10 @@ All tables have row-level security. Users can only access their own data. `pre_w
 - **Background:** `#FDF8ED` (warm cream)
 - **Text/Accent:** `#2D1E3C` (deep purple-black)
 - **Cards:** `#FFFFFF` with `#E0DAD3` border
-- **Grid cells:** `#E8E2DB` background/border, first cell `#2D1E3C` border
+- **Grid cells:** `#E8E2DB` background/border
 - **Doodle canvas:** `#E8E2DB` background, `#2D1E3C` strokes (5px)
 - **Doodle thumbnails:** `#2D1E3C` background, `#FFFFFF` strokes (inverted)
+- **Sheet background:** `#FAFAFC`
 - **Muted text:** `#A0A0A0`
 - **Secondary text:** `#6B6B6B`
 - **Headers:** Geist 600SemiBold, 24vw responsive, line-height 0.8, letter-spacing -0.5vw
@@ -269,7 +309,7 @@ All tables have row-level security. Users can only access their own data. `pre_w
 ## What Has NOT Been Built Yet
 
 ### Not built (future milestones):
-- **Share functionality** (M5) — share doodle/streak/card (Share button exists but is a no-op)
+- **Share functionality** (M5) — share doodle/streak/card
 - **Doodle PNG export** — save doodle as PNG to Supabase Storage for sharing (stroke JSON is saved, PNG export deferred)
 - **Animations/transitions** (M5) — smooth flow between states
 - **Push notifications** — daily reminders
@@ -285,10 +325,11 @@ All tables have row-level security. Users can only access their own data. `pre_w
 2. **Text-to-audio sync during playback** uses even time division (total duration / number of lines). This is approximate. Fix: store per-line timestamps during recording.
 3. **The (tabs) layout** is a Stack, not actual tabs. Placeholder for future tab bar.
 4. **No error boundaries** or loading skeletons yet.
-5. **Dashboard hero text and today's affirmation** are picked randomly on each render. Should persist the daily pick.
+5. **Dashboard hero text** is static. Today's playlist is randomly selected on mount from active affirmations with audio.
 6. **Web audio format** is `.webm` while native is `.m4a`. The playback hook and listen screen may need to handle both formats when playing back on different platforms.
 7. **Doodle data is JSON in a TEXT column** — works fine for the current scale. If doodle data gets very large (many complex strokes), consider compressing or limiting stroke point density.
 8. **PanResponder in DoodleCanvas** uses a static `useRef` — the panResponder is created once and doesn't update with state changes. The `onStrokesChange` callback is passed at creation time, so stroke state changes use `setStrokes` functional updates internally.
+9. **Signed audio URLs expire after 1 hour** — pre-fetched URLs in the listen screen cache are not refreshed. Long idle sessions may need URL re-fetching.
 
 ## Continued Guidance
 Continue to update this file as work is done and keep it updated every addition.

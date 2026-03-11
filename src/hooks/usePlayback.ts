@@ -4,20 +4,32 @@ import { getAudioUrl } from '@/lib/storage';
 import { splitIntoSentences } from '@/lib/text';
 import type { Affirmation, ScriptLine } from '@/types';
 
-export function usePlayback(affirmation: Affirmation | null) {
+export function usePlayback(affirmation: Affirmation | null, options?: { autoPlay?: boolean; resolvedUrl?: string | null }) {
+  const autoPlay = options?.autoPlay ?? false;
+  const resolvedUrl = options?.resolvedUrl;
   const [audioSource, setAudioSource] = useState<string | null>(null);
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
   const sourceLoadedRef = useRef(false);
+  // Track which source the player has actually loaded so auto-play doesn't fire on stale state
+  const [readySource, setReadySource] = useState<string | null>(null);
+  const pendingAutoPlay = useRef(false);
 
   useEffect(() => {
     sourceLoadedRef.current = false;
-    if (affirmation?.audio_url) {
+    setReadySource(null);
+    if (autoPlay) pendingAutoPlay.current = true;
+    setCurrentLineIndex(0);
+    if (resolvedUrl) {
+      // URL already pre-fetched — use immediately
+      setAudioSource(resolvedUrl);
+      sourceLoadedRef.current = true;
+    } else if (affirmation?.audio_url) {
       getAudioUrl(affirmation.audio_url).then((url) => {
         setAudioSource(url);
         sourceLoadedRef.current = true;
       }).catch(() => {});
     }
-  }, [affirmation?.audio_url]);
+  }, [affirmation?.audio_url, resolvedUrl]);
 
   const player = useAudioPlayer(audioSource ? { uri: audioSource } : null);
   const status = useAudioPlayerStatus(player);
@@ -28,6 +40,21 @@ export function usePlayback(affirmation: Affirmation | null) {
       player.replace({ uri: audioSource });
     }
   }, [audioSource]);
+
+  // Mark when the player has loaded the current source
+  useEffect(() => {
+    if (status.isLoaded && audioSource) {
+      setReadySource(audioSource);
+    }
+  }, [status.isLoaded, audioSource]);
+
+  // Auto-play once the NEW source is loaded (readySource matches audioSource)
+  useEffect(() => {
+    if (pendingAutoPlay.current && readySource && readySource === audioSource && !status.playing) {
+      pendingAutoPlay.current = false;
+      player.play();
+    }
+  }, [readySource, audioSource, status.playing]);
 
   const scriptLines: ScriptLine[] = useMemo(
     () =>

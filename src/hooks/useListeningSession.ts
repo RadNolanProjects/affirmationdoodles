@@ -79,11 +79,20 @@ export function useListeningSession() {
       .eq('user_id', user.id)
       .not('completed_at', 'is', null)
       .order('listened_at', { ascending: false })
+      .order('completed_at', { ascending: false })
       .returns<(ListeningSession & { affirmations: { title: string } | null })[]>();
 
     if (error) throw error;
     return data ?? [];
   };
 
-  return { createSession, completeSession, saveDoodle, deleteSession, getSessionsForMonth, getAllSessions };
+  const updateSessionDate = async (sessionId: string, newDate: string) => {
+    const { error } = await supabase
+      .from('listening_sessions')
+      .update({ listened_at: newDate })
+      .eq('id', sessionId);
+    if (error) throw error;
+  };
+
+  return { createSession, completeSession, saveDoodle, deleteSession, getSessionsForMonth, getAllSessions, updateSessionDate };
 }
