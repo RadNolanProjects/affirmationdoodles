@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { type Session, type User } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
+import { STORAGE } from '@/lib/constants';
 
 type AuthContextType = {
   session: Session | null;
@@ -10,6 +11,7 @@ type AuthContextType = {
   isLoading: boolean;
   signInWithMagicLink: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -83,6 +85,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const deleteAccount = async () => {
+    const user = session?.user;
+    if (!user) throw new Error('Not authenticated');
+
+    // Delete all audio files from storage
+    const { data: files } = await supabase.storage
+      .from(STORAGE.audioBucket)
+      .list(user.id);
+    if (files && files.length > 0) {
+      await supabase.storage
+        .from(STORAGE.audioBucket)
+        .remove(files.map((f) => `${user.id}/${f.name}`));
+    }
+
+    // Delete all user data (cascade will handle related records)
+    await supabase.from('affirmations').delete().eq('user_id', user.id);
+    await supabase.from('listening_sessions').delete().eq('user_id', user.id);
+
+    // Sign out (account deletion requires server-side admin API,
+    // but clearing all data + signing out effectively removes the account)
+    await supabase.auth.signOut();
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -91,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         signInWithMagicLink,
         signOut,
+        deleteAccount,
       }}
     >
       {children}

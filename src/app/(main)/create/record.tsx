@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { useRecording } from '@/hooks/useRecording';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useAffirmations } from '@/hooks/useAffirmations';
+import { useListeningSession } from '@/hooks/useListeningSession';
 import { useAuth } from '@/contexts/AuthContext';
 import { uploadAudio } from '@/lib/storage';
 import { COLORS, FONTS } from '@/lib/constants';
@@ -27,13 +28,17 @@ import { RecordingPreview } from '@/components/affirmation/RecordingPreview';
 type RecordingState = 'idle' | 'recording' | 'paused' | 'done';
 
 export default function RecordScreen() {
-  const { title, script, affirmationId } = useLocalSearchParams<{
+  const { title, script, affirmationId, ftue, ftueScripts: ftueScriptsParam, ftueIndex: ftueIndexParam } = useLocalSearchParams<{
     title: string;
     script: string;
     affirmationId?: string;
+    ftue?: string;
+    ftueScripts?: string;
+    ftueIndex?: string;
   }>();
   const { user } = useAuth();
   const { createAffirmation, updateAffirmation } = useAffirmations();
+  const { createSession } = useListeningSession();
   const recording = useRecording();
   const speech = useSpeechRecognition();
   const scrollRef = useRef<ScrollView>(null);
@@ -210,6 +215,8 @@ export default function RecordScreen() {
       throw new Error('No recording to save');
     }
 
+    let savedAffirmationId = affirmationId;
+
     if (affirmationId) {
       const audioPath = await uploadAudio(user.id, affirmationId, uri);
       await updateAffirmation(affirmationId, {
@@ -221,6 +228,7 @@ export default function RecordScreen() {
         title: title ?? 'My Affirmation',
         script: script ?? '',
       });
+      savedAffirmationId = affirmation.id;
       const audioPath = await uploadAudio(user.id, affirmation.id, uri);
       await updateAffirmation(affirmation.id, {
         audio_url: audioPath,
@@ -228,8 +236,42 @@ export default function RecordScreen() {
       });
     }
 
-    router.dismissAll();
-    router.replace('/(main)/(tabs)');
+    if (ftueScriptsParam && savedAffirmationId) {
+      const scripts = JSON.parse(ftueScriptsParam) as { title: string; script: string }[];
+      const currentIndex = parseInt(ftueIndexParam ?? '0', 10);
+      const nextIndex = currentIndex + 1;
+
+      if (nextIndex < scripts.length) {
+        // More scripts to record — replace current screen with next
+        router.replace({
+          pathname: '/(main)/create/record',
+          params: {
+            title: scripts[nextIndex].title,
+            script: scripts[nextIndex].script,
+            ftueScripts: ftueScriptsParam,
+            ftueIndex: String(nextIndex),
+          },
+        });
+      } else {
+        // Last script recorded — create session and go to doodle
+        const session = await createSession(savedAffirmationId);
+        router.dismissAll();
+        router.replace({
+          pathname: '/(main)/listen/doodle',
+          params: { sessionId: session.id, affirmationTitle: title ?? 'My Affirmation' },
+        });
+      }
+    } else if (ftue === '1' && savedAffirmationId) {
+      const session = await createSession(savedAffirmationId);
+      router.dismissAll();
+      router.replace({
+        pathname: '/(main)/listen/doodle',
+        params: { sessionId: session.id, affirmationTitle: title ?? 'My Affirmation' },
+      });
+    } else {
+      router.dismissAll();
+      router.replace('/(main)/(tabs)');
+    }
   };
 
   const formatDuration = (seconds: number) => {
@@ -242,7 +284,9 @@ export default function RecordScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScreenHeader
         title="Record."
-        subtitle="Words will scroll as you speak"
+        subtitle={ftueScriptsParam
+          ? `${parseInt(ftueIndexParam ?? '0', 10) + 1} of ${JSON.parse(ftueScriptsParam).length} — ${title}`
+          : 'Words will scroll as you speak'}
       />
 
       {/* Script Display */}

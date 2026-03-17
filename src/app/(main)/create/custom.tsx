@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { BottomBar } from '@/components/ui/BottomBar';
 import { COLORS, FONTS } from '@/lib/constants';
 
 export default function CustomScriptScreen() {
+  const { ftue } = useLocalSearchParams<{ ftue?: string }>();
   const [name, setName] = useState('');
   const [script, setScript] = useState('');
 
@@ -15,7 +16,7 @@ export default function CustomScriptScreen() {
 
     router.push({
       pathname: '/(main)/create/record',
-      params: { title, script },
+      params: { title, script, ...(ftue === '1' && { ftue: '1' }) },
     });
   };
 

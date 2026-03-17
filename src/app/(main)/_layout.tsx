@@ -16,6 +16,7 @@ export default function MainLayout() {
       }}
     >
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="settings" />
       <Stack.Screen name="manage" options={{ presentation: 'modal' }} />
       <Stack.Screen name="create" />
       <Stack.Screen name="listen" />
