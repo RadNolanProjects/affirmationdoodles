@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  Easing,
   Modal,
   PanResponder,
   Platform,
@@ -17,7 +18,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
-import { useAuth } from '@/contexts/AuthContext';
 import { useAffirmations } from '@/hooks/useAffirmations';
 import { useListeningSession } from '@/hooks/useListeningSession';
 import { COLORS, FONTS } from '@/lib/constants';
@@ -25,6 +25,7 @@ import { deleteAudio, getAudioUrl } from '@/lib/storage';
 import { Button } from '@/components/ui/Button';
 import { DoodleThumbnail } from '@/components/doodle/DoodleThumbnail';
 import { Confetti } from '@/components/ui/Confetti';
+import { SCRIPT_CATEGORIES } from '@/app/(main)/create/index';
 import type { Affirmation, DoodleData, ListeningSession } from '@/types';
 
 type SessionWithTitle = ListeningSession & {
@@ -39,12 +40,17 @@ const SHEET_ITEM_HEIGHT = 40;
 const SHEET_ITEM_LINE = 24;
 const SHEET_BASE_HEIGHT = 192;
 function sheetHeightForCount(count: number) {
-  if (count === 0) return 220; // empty state fallback
+  if (count === 0) return 340; // FTUE: welcome text + script card slider + CTA
   return SHEET_BASE_HEIGHT + count * SHEET_ITEM_HEIGHT + Math.max(0, count - 1) * SHEET_ITEM_LINE;
 }
 const SHEET_EXPANDED_COMPLETE = 500;
 const SNAP_THRESHOLD = 60;
 const EMPTY_TRAIL_CELLS = 140;
+
+// FTUE: scripts marked ftue:true in SCRIPT_CATEGORIES
+const FTUE_SCRIPT_POOL = SCRIPT_CATEGORIES.flatMap((c) =>
+  c.scripts.filter((s) => s.ftue)
+);
 
 function parseDoodleData(raw: string | null): DoodleData | null {
   if (!raw) return null;
@@ -315,7 +321,6 @@ function ManageItem({
 }
 
 export default function DashboardScreen() {
-  const { signOut } = useAuth();
   const { width: vw, height: vh } = useWindowDimensions();
   const { affirmations, isLoading, fetchAffirmations, deleteAffirmation } = useAffirmations();
   const { getAllSessions, deleteSession, createSession, updateSessionDate } = useListeningSession();
@@ -328,6 +333,21 @@ export default function DashboardScreen() {
   const [manageListHeight, setManageListHeight] = useState(0);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const celebrationHandled = useRef(false);
+
+  // Intro animation state (plays on every mount)
+  const [introPhase, setIntroPhase] = useState<'typing' | 'settling' | 'gridReveal' | 'ready'>('typing');
+  const [introTypedLength, setIntroTypedLength] = useState(0);
+  const [ftueScripts, setFtueScripts] = useState(() => FTUE_SCRIPT_POOL.slice(0, 3));
+  const introAnimStarted = useRef(false);
+  // Separate animated values for sequenced stages
+  const introTextY = useRef(new Animated.Value(0)).current;         // direct translateY for overlay text
+  const introBgOpacity = useRef(new Animated.Value(1)).current;     // overlay background
+  const introGridReveal = useRef(new Animated.Value(0)).current;    // grid fade + slide
+  const introSheetReveal = useRef(new Animated.Value(0)).current;   // sheet slide from bottom
+  const introHeroOpacity = useRef(new Animated.Value(0)).current;   // real hero text — starts hidden
+  const heroRef = useRef<View>(null);
+  const heroMeasuredCenterY = useRef<number | null>(null);
+
   const { justCompleted, completedTitle } = useLocalSearchParams<{
     justCompleted?: string;
     completedTitle?: string;
@@ -700,6 +720,123 @@ export default function DashboardScreen() {
   const cellWidth = vw * 0.05;
   const cellHeight = cellWidth * 1.5;
 
+  // Intro animation: grid fades and slides up
+  const introGridOpacity = introGridReveal;
+  const introGridSlideY = introGridReveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [40, 0],
+  });
+  // Intro animation: sheet slides up from bottom — offset matches actual sheet height
+  const introSheetSlideY = Animated.multiply(
+    introSheetReveal.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+    sheetHeight,
+  );
+
+  const easeInOut = Easing.inOut(Easing.ease);
+
+  // Measure hero text position for seamless overlay→hero handoff
+  useEffect(() => {
+    if (heroRef.current) {
+      const timer = setTimeout(() => {
+        heroRef.current?.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+          heroMeasuredCenterY.current = y + h / 2;
+        });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // Intro animation — plays on mount: type → slide up → grid → sheet
+  useEffect(() => {
+    if (!introAnimStarted.current) {
+      introAnimStarted.current = true;
+
+      const startDelay = setTimeout(() => {
+        const fullText = heroText;
+        let i = 0;
+        const interval = setInterval(() => {
+          i++;
+          setIntroTypedLength(i);
+          if (i >= fullText.length) {
+            clearInterval(interval);
+            // Beat after typing completes
+            setTimeout(() => {
+              setIntroPhase('settling');
+
+              // Calculate target: move overlay text center to hero text center
+              const targetY = heroMeasuredCenterY.current != null
+                ? heroMeasuredCenterY.current - vh / 2
+                : -(vh * 0.28);
+
+              // Stage 1: Slide overlay text up to hero position, fade bg
+              Animated.parallel([
+                Animated.timing(introTextY, {
+                  toValue: targetY,
+                  duration: 800,
+                  easing: easeInOut,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(introBgOpacity, {
+                  toValue: 0,
+                  duration: 800,
+                  easing: easeInOut,
+                  useNativeDriver: true,
+                }),
+              ]).start(() => {
+                // Instant swap: hide overlay, show real hero in same frame
+                introHeroOpacity.setValue(1);
+                setIntroPhase('gridReveal');
+
+                // Stage 2: Grid fades in + slides up
+                Animated.timing(introGridReveal, {
+                  toValue: 1,
+                  duration: 600,
+                  easing: easeInOut,
+                  useNativeDriver: true,
+                }).start(() => {
+                  // Stage 3: Sheet slides up from bottom
+                  Animated.timing(introSheetReveal, {
+                    toValue: 1,
+                    duration: 700,
+                    easing: easeInOut,
+                    useNativeDriver: true,
+                  }).start(() => {
+                    setIntroPhase('ready');
+                  });
+                });
+              });
+            }, 500);
+          }
+        }, 45);
+      }, 500);
+
+      return () => clearTimeout(startDelay);
+    }
+  }, []);
+
+  const shuffleFtueScript = (index: number) => {
+    setFtueScripts((prev) => {
+      const currentTitles = new Set(prev.map((s) => s.title));
+      const available = FTUE_SCRIPT_POOL.filter((s) => !currentTitles.has(s.title));
+      if (available.length === 0) return prev;
+      const next = [...prev];
+      next[index] = available[Math.floor(Math.random() * available.length)];
+      return next;
+    });
+  };
+
+  const handleFtueStartRecording = () => {
+    router.push({
+      pathname: '/(main)/create/record',
+      params: {
+        title: ftueScripts[0].title,
+        script: ftueScripts[0].script,
+        ftueScripts: JSON.stringify(ftueScripts),
+        ftueIndex: '0',
+      },
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Scrollable content behind the sheet */}
@@ -708,22 +845,32 @@ export default function DashboardScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingHorizontal: vw * 0.07 }]}
         showsVerticalScrollIndicator={false}
       >
+        {/* Top bar with logout */}
+        <Animated.View style={[styles.topBar, { opacity: introHeroOpacity }]}>
+          <View style={{ flex: 1 }} />
+          <Pressable onPress={() => router.push('/(main)/settings')}>
+            <Text style={styles.settingsText}>Settings</Text>
+          </Pressable>
+        </Animated.View>
+
         {/* Hero Text */}
-        <Text
-          style={[
-            styles.heroText,
-            {
-              fontSize: vw * 0.24,
-              lineHeight: vw * 0.24 * 0.8,
-              letterSpacing: vw * -0.005,
-            },
-          ]}
-        >
-          {heroText}
-        </Text>
+        <Animated.View ref={heroRef} style={{ opacity: introHeroOpacity }}>
+          <Text
+            style={[
+              styles.heroText,
+              {
+                fontSize: vw * 0.24,
+                lineHeight: vw * 0.24 * 0.8,
+                letterSpacing: vw * -0.005,
+              },
+            ]}
+          >
+            {heroText}
+          </Text>
+        </Animated.View>
 
         {/* History Grid */}
-        <View style={styles.section}>
+        <Animated.View style={[styles.section, { opacity: introGridOpacity, transform: [{ translateY: introGridSlideY }] }]}>
           <Text style={styles.sectionLabel}>History</Text>
           <View style={styles.gridContainer}>
             <View style={[styles.grid, { gap: vw * 0.01, marginTop: 16 }]}>
@@ -795,14 +942,14 @@ export default function DashboardScreen() {
               pointerEvents="none"
             />
           </View>
-        </View>
+        </Animated.View>
 
         {/* Extra space so content isn't hidden behind sheet */}
         <Animated.View style={{ height: Animated.add(sheetHeight, 20) }} />
       </ScrollView>
 
       {/* Bottom Sheet */}
-      <Animated.View style={[styles.sheet, { height: sheetHeight }]}>
+      <Animated.View style={[styles.sheet, { height: sheetHeight, transform: [{ translateY: introSheetSlideY }] }]}>
         {/* Drag Handle — disabled in manage mode */}
         {manageMode ? (
           <View style={styles.handleArea}>
@@ -973,7 +1120,7 @@ export default function DashboardScreen() {
             {/* Normal: Expandable content */}
             {sheetExpanded && (
               <View style={styles.sheetContent}>
-                {todaysPlaylist.length > 0 ? (
+                {hasRecordedAffirmations ? (
                   <View style={styles.playlistSection}>
                     <View style={styles.playlistHeader}>
                       <Text style={styles.sectionLabel}>
@@ -999,10 +1146,31 @@ export default function DashboardScreen() {
                     </View>
                   </View>
                 ) : !isLoading ? (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>
-                      Record your first affirmation to get started.
+                  <View style={styles.ftueSection}>
+                    <Text style={styles.ftueWelcome}>
+                      Record your first affirmations to get started.
                     </Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.ftueSlider}
+                    >
+                      {ftueScripts.map((s, index) => (
+                        <View key={`${s.title}-${index}`} style={[styles.ftueCard, { width: vw * 0.66 }]}>
+                          <Pressable
+                            style={styles.ftueShuffleBtn}
+                            onPress={() => shuffleFtueScript(index)}
+                            hitSlop={8}
+                          >
+                            <Ionicons name="shuffle-outline" size={20} color={COLORS.textSecondary} />
+                          </Pressable>
+                          <Text style={styles.ftueCardTitle}>{s.title}</Text>
+                          <Text style={styles.ftueCardScript} numberOfLines={4}>
+                            {s.script}
+                          </Text>
+                        </View>
+                      ))}
+                    </ScrollView>
                   </View>
                 ) : null}
               </View>
@@ -1023,14 +1191,61 @@ export default function DashboardScreen() {
                 />
               ) : (
                 <Button
-                  label="+ Create Affirmation"
-                  onPress={() => router.push('/(main)/create')}
+                  label="Start Recording"
+                  onPress={handleFtueStartRecording}
                 />
               )}
             </View>
           </>
         )}
       </Animated.View>
+
+      {/* Intro typewriter overlay */}
+      {introPhase === 'typing' || introPhase === 'settling' ? (
+        <>
+          {/* Background — blocks content during typing, fades during slide */}
+          <Animated.View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: COLORS.background,
+                opacity: introBgOpacity,
+                zIndex: 100,
+              },
+            ]}
+            pointerEvents={introPhase === 'typing' ? 'box-only' : 'none'}
+          />
+          {/* Text — stays solid, slides up to hero position, then swapped out */}
+          <Animated.View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                justifyContent: 'center',
+                zIndex: 101,
+                transform: [{ translateY: introTextY }],
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <Text
+              style={[
+                styles.heroText,
+                {
+                  fontSize: vw * 0.24,
+                  lineHeight: vw * 0.24 * 0.8,
+                  letterSpacing: vw * -0.005,
+                  paddingHorizontal: vw * 0.07,
+                  paddingTop: 0,
+                },
+              ]}
+            >
+              {introPhase === 'typing'
+                ? heroText.substring(0, introTypedLength)
+                : heroText}
+            </Text>
+          </Animated.View>
+        </>
+      ) : null}
 
       {/* Celebration modal — shown after completing a doodle */}
       <Modal
@@ -1068,6 +1283,11 @@ export default function DashboardScreen() {
             <View style={styles.celebrationDivider} />
 
             {/* Record another CTA */}
+            {sessions.filter((s) => s.doodle_data).length <= 1 && (
+              <Text style={styles.celebrationPrompt}>
+                Come back tomorrow for your first affirmation listen.
+              </Text>
+            )}
             <Text style={styles.celebrationPrompt}>Keep expanding your library!</Text>
             <Pressable
               style={styles.celebrationButton}
@@ -1187,10 +1407,21 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 16,
   },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  settingsText: {
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textDecorationLine: 'underline',
+  },
   heroText: {
     fontFamily: FONTS.displaySemiBold,
     color: COLORS.text,
-    paddingTop: 40,
+    paddingTop: 24,
   },
   section: {
     marginTop: 24,
@@ -1503,6 +1734,57 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
+  },
+
+  // FTUE sheet content
+  ftueSection: {
+    gap: 16,
+    paddingBottom: 8,
+    marginHorizontal: -32,
+  },
+  ftueWelcome: {
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: 32,
+  },
+  ftueSlider: {
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  ftueCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    padding: 20,
+    gap: 8,
+  },
+  ftueShuffleBtn: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  ftueCardTitle: {
+    fontFamily: FONTS.bodyBold,
+    fontSize: 16,
+    color: COLORS.text,
+    paddingRight: 36,
+  },
+  ftueCardScript: {
+    fontFamily: FONTS.bodyRegular,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 19,
   },
   ctaArea: {
     paddingHorizontal: 24,

@@ -4,7 +4,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { BottomBar } from '@/components/ui/BottomBar';
@@ -12,17 +12,18 @@ import { PreWrittenScriptCard } from '@/components/affirmation/PreWrittenScriptC
 import { usePreWrittenScripts } from '@/hooks/usePreWrittenScripts';
 import { COLORS } from '@/lib/constants';
 
-type ScriptItem = {
+export type ScriptItem = {
   title: string;
   script: string;
+  ftue?: boolean;
 };
 
-type ScriptCategory = {
+export type ScriptCategory = {
   label: string;
   scripts: ScriptItem[];
 };
 
-const SCRIPT_CATEGORIES: ScriptCategory[] = [
+export const SCRIPT_CATEGORIES: ScriptCategory[] = [
   {
     label: 'General Positivity',
     scripts: [
@@ -30,16 +31,19 @@ const SCRIPT_CATEGORIES: ScriptCategory[] = [
         title: 'Bright Side',
         script:
           'I am choosing joy today. I am grateful for the life I am building. I am a magnet for good things. I am deserving of love, laughter, and abundance. I am stronger than I realize. I am making the world a little better just by being in it.',
+        ftue: true,
       },
       {
         title: 'Unshakable',
         script:
           'I am filled with energy and purpose. I am worthy of celebration, not just on big days, but every day. I am letting go of comparison. I am exactly where I need to be. I am a work in progress, and that is a beautiful thing. I am choosing to see the good.',
+        ftue: true,
       },
       {
         title: 'Wide Open',
         script:
           'I am open to the unexpected. I am grateful for the small moments that make life full. I am kind to myself, especially when things feel hard. I am surrounded by more support than I realize. I am allowed to take up space. I am enough, again and again.',
+        ftue: true,
       },
     ],
   },
@@ -50,16 +54,19 @@ const SCRIPT_CATEGORIES: ScriptCategory[] = [
         title: 'Still Waters',
         script:
           'I am at peace with what I cannot control. I am safe in this moment. I am allowed to rest without earning it. I am breathing deeply and letting tension leave my body. I am giving myself permission to slow down. I am calm, and clarity is coming.',
+        ftue: true,
       },
       {
         title: 'Soft Landing',
         script:
           'I am releasing the weight of yesterday. I am not my anxious thoughts. I am choosing peace over perfection. I am gently returning to the present whenever my mind wanders. I am held. I am allowed to feel without fixing.',
+        ftue: true,
       },
       {
         title: 'Quiet Strength',
         script:
           'I am steady even when the world feels loud. I am protecting my peace. I am not in a rush — everything will unfold in time. I am choosing to respond, not react. I am giving my nervous system what it needs. I am safe to simply be.',
+        ftue: true,
       },
     ],
   },
@@ -70,6 +77,7 @@ const SCRIPT_CATEGORIES: ScriptCategory[] = [
         title: 'Right Here',
         script:
           'I am fully present in this moment. I am not behind, and I am not running out of time. I am letting go of what has already passed. I am focused on what is in front of me right now. I am alive, awake, and here. I am savoring today.',
+        ftue: true,
       },
       {
         title: 'This Moment',
@@ -80,6 +88,7 @@ const SCRIPT_CATEGORIES: ScriptCategory[] = [
         title: 'Grounded',
         script:
           'I am rooted in today. I am not borrowing trouble from tomorrow. I am paying attention to how things feel, not just how they look. I am trusting that the future will take care of itself. I am here. I am showing up fully for this one moment.',
+        ftue: true,
       },
     ],
   },
@@ -95,6 +104,7 @@ const SCRIPT_CATEGORIES: ScriptCategory[] = [
         title: 'Flow State',
         script:
           'I am creative by nature. I am open to inspiration from unexpected places. I am giving myself space to experiment without judgment. I am letting the work lead me somewhere new. I am playful with my process. I am doing the work that lights me up.',
+        ftue: true,
       },
       {
         title: 'Original',
@@ -105,14 +115,15 @@ const SCRIPT_CATEGORIES: ScriptCategory[] = [
   },
 ];
 
-const navigateToCustomize = (title: string, script: string) => {
+const navigateToCustomize = (title: string, script: string, ftue?: string) => {
   router.push({
     pathname: '/(main)/create/customize',
-    params: { title, script },
+    params: { title, script, ...(ftue === '1' && { ftue: '1' }) },
   });
 };
 
 export default function CreateChooseMethodScreen() {
+  const { ftue } = useLocalSearchParams<{ ftue?: string }>();
   const { scripts } = usePreWrittenScripts();
 
   return (
@@ -132,7 +143,7 @@ export default function CreateChooseMethodScreen() {
               <View key={item.id} style={index > 0 ? styles.cardGap : undefined}>
                 <PreWrittenScriptCard
                   script={item}
-                  onPress={() => navigateToCustomize(item.title, item.script)}
+                  onPress={() => navigateToCustomize(item.title, item.script, ftue)}
                 />
               </View>
             ))}
@@ -152,7 +163,7 @@ export default function CreateChooseMethodScreen() {
                 <View key={item.title} style={index > 0 ? styles.cardGap : undefined}>
                   <PreWrittenScriptCard
                     script={item}
-                    onPress={() => navigateToCustomize(item.title, item.script)}
+                    onPress={() => navigateToCustomize(item.title, item.script, ftue)}
                   />
                 </View>
               ))}
@@ -164,7 +175,7 @@ export default function CreateChooseMethodScreen() {
       <BottomBar
         onBack={() => router.dismiss()}
         ctaLabel="Custom Script"
-        ctaOnPress={() => router.push('/(main)/create/custom')}
+        ctaOnPress={() => router.push({ pathname: '/(main)/create/custom', params: ftue === '1' ? { ftue: '1' } : undefined })}
         ctaVariant="white"
       />
     </SafeAreaView>

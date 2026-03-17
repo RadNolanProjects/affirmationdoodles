@@ -18,7 +18,7 @@ const COOLDOWN_SECONDS = 60;
 
 function isRateLimitError(message: string): boolean {
   const lower = message.toLowerCase();
-  return lower.includes('rate limit') || lower.includes('too many requests') || lower.includes('email rate limit');
+  return lower.includes('rate limit') || lower.includes('too many requests') || lower.includes('email rate limit') || lower.includes('security purposes');
 }
 
 export default function SignInScreen() {
@@ -66,8 +66,9 @@ export default function SignInScreen() {
     setIsLoading(false);
 
     if (authError) {
+      console.log('Auth error:', authError.message);
       if (isRateLimitError(authError.message)) {
-        setError('Please wait a minute before requesting another magic link.');
+        setError('Too many requests. Please wait a moment before trying again.');
         startCooldown();
       } else {
         setError(authError.message);

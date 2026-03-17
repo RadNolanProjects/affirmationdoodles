@@ -8,9 +8,9 @@ Affirm is a mobile-first daily affirmations app. Users record affirmations in th
 
 ## What Was Built
 
-### Scope: M1 (Foundation) + M2 (Record) + M3 (Listen + Doodle) + M4 (Playlist + Library)
+### Scope: M1 (Foundation) + M2 (Record) + M3 (Listen + Doodle) + M4 (Playlist + Library) + M4.5 (FTUE + Settings)
 
-The goal: a user can record an affirmation, listen to it, doodle after listening, and see their doodle history on the dashboard. M4 added playlist playback of multiple affirmations and an in-sheet library management experience.
+The goal: a user can record an affirmation, listen to it, doodle after listening, and see their doodle history on the dashboard. M4 added playlist playback of multiple affirmations and an in-sheet library management experience. M4.5 added a first-time user experience that guides new users through recording 3 affirmations, a full intro animation sequence, and a settings screen with account management.
 
 ### Tech Stack
 
@@ -69,11 +69,12 @@ affirmationdoodles/
 │ │
 │ └── (main)/
 │ ├── _layout.tsx # Protected routes (redirects if not authed)
+│ ├── settings.tsx # Settings screen: logout (with confirmation), delete account (with DELETE confirmation modal)
 │ ├── manage.tsx # All Affirmations list (modal presentation, legacy — replaced by in-sheet library)
 │ │
 │ ├── (tabs)/
 │ │ ├── _layout.tsx # Stack (not tabs yet — placeholder for future)
-│ │ └── index.tsx # Dashboard: hero text, history grid, bottom sheet (playlist + library + completed states)
+│ │ └── index.tsx # Dashboard: intro animation, hero text, history grid, bottom sheet (playlist/FTUE/library/completed)
 │ │
 │ ├── create/
 │ │ ├── _layout.tsx # Create flow stack (explicit screen registrations)
@@ -107,7 +108,7 @@ affirmationdoodles/
 │ └── DoodleThumbnail.tsx # Renders stroke data as SVG at any size/color scheme
 │
 ├── contexts/
-│ └── AuthContext.tsx # Session state, signInWithMagicLink, signOut (platform-aware)
+│ └── AuthContext.tsx # Session state, signInWithMagicLink, signOut, deleteAccount (clears storage + data)
 │
 ├── hooks/
 │ ├── useAffirmations.ts # CRUD for affirmations table
@@ -174,6 +175,14 @@ All tables have row-level security. Users can only access their own data. `pre_w
 - **Web auth:** Uses `window.location.origin` for redirect URL (not `affirm://` scheme). Checks `window.location.hash` for tokens on mount.
 
 ### Dashboard (Home)
+- **Intro animation** (plays on every mount, not just FTUE):
+  1. Blank cream screen for 500ms
+  2. "I am more than enough" types out character by character (centered on screen, 45ms/char)
+  3. 500ms beat, then text slides up to hero position (800ms, easeInOut). Uses `measureInWindow` to calculate exact target Y. Overlay text stays at full opacity during slide, then instant-swaps with the real hero text at the end — no fade/pop.
+  4. History grid fades in + slides up from below (600ms, easeInOut)
+  5. Bottom sheet slides up from off-screen (700ms, easeInOut). Slide offset is dynamic — `Animated.multiply((1-progress), sheetHeight)` so it works regardless of sheet height.
+  - All animated values initialize to their "hidden" state (`introHeroOpacity: 0`, `introGridReveal: 0`, etc.) to prevent flash of unstyled content on mount.
+- **Settings link** (top-right, underlined) navigates to `/(main)/settings`
 - Large Geist hero text (24vw, responsive) — static "I am more than enough"
 - **History grid:** Reverse-chronological grid of all completed sessions (all-time, not monthly)
   - Index 0 (top-left) = most recent doodle; last cell = first-ever doodle
@@ -188,7 +197,16 @@ All tables have row-level security. Users can only access their own data. `pre_w
   - Data fetched via `getAllSessions()` (all completed sessions, ordered by `listened_at` desc)
 - **Bottom sheet modal** (draggable via PanResponder):
   - Scroll spacer is dynamic — `Animated.View` height tied to current `sheetHeight`, so collapsing the sheet reduces scrollable area
-  - **Playlist mode** (no completion today):
+  - **FTUE mode** (no recordings at all):
+    - Welcome text: "Record your first affirmations to get started."
+    - 3 script cards in a horizontal slider (66% screen width each)
+    - Cards show title + script preview (4 lines), with a shuffle icon (top-right) that swaps to a random alternative from the FTUE pool
+    - Scripts are sourced from `SCRIPT_CATEGORIES` in `create/index.tsx` — items with `ftue: true` are in the pool (single source of truth)
+    - "Start Recording" CTA button sends user through all 3 scripts sequentially (record → save → next script → ... → doodle)
+    - After recording the 3rd script, creates a listening session and routes to doodle
+    - Celebration modal after first doodle includes: "Come back tomorrow for your first affirmation listen."
+    - Sheet height: 340px for FTUE content
+  - **Playlist mode** (has recordings, no completion today):
     - Collapsed state (130px): drag handle + CTA button only
     - Expanded state (dynamic height based on playlist count): header + timeline list + CTA
     - Header: "Today's affirmations ({total_duration})" with "Library" link
@@ -225,6 +243,28 @@ All tables have row-level security. Users can only access their own data. `pre_w
 2. **Customize:** Editable text area
 3. **Custom:** Empty text area with placeholder
 4. **Record:** Speech-recognition-powered recording screen
+   - **FTUE queue mode**: When launched from the FTUE sheet, the record screen receives `ftueScripts` (JSON array) and `ftueIndex` params. Subtitle shows "1 of 3 — Script Title" progress indicator. After saving each recording, `router.replace` navigates to the next script (no stack buildup). After the final script, creates a session and routes to doodle.
+   - The `ftue` param is also threaded through choose → customize → custom → record for the single-script FTUE path (used by "Create Affirmation" from dashboard).
+
+### Script System
+- All scripts live in `SCRIPT_CATEGORIES` (exported from `create/index.tsx`) — a typed array of categories, each with labeled scripts.
+- Each `ScriptItem` has `title`, `script`, and optional `ftue: boolean`.
+- The FTUE pool is derived via `SCRIPT_CATEGORIES.flatMap(c => c.scripts.filter(s => s.ftue))` — no duplication.
+- Currently 9 of 12 scripts are marked `ftue: true`. To change the FTUE pool, just toggle the flag.
+
+### Settings
+- **Header:** Back arrow (circle, 2px border) + "Settings" title (57px Geist Medium)
+- **Delete my account** button: red outline (`#C30000`), pill shape, soft shadow
+- **Logout** button: white fill, `#DEDEDE` border, pill shape, soft shadow
+- **Logout flow:** Platform-aware confirmation alert (native Alert.alert / web window.confirm), then `signOut()`
+- **Delete flow:** Opens a bottom sheet modal (slides up, dark overlay):
+  - "Are you sure?" warning in red
+  - Description: "All recordings and user data will be deleted and not able to be recovered."
+  - Divider
+  - Text input with "Type DELETE below to confirm" label, placeholder "DELETE"
+  - Bottom bar: back arrow + red "Delete account" button (disabled at 20% opacity until "DELETE" is typed)
+  - Tapping overlay above sheet dismisses modal; tapping inside sheet (including input) does not dismiss (separate Pressable layers)
+  - `deleteAccount()` in AuthContext: deletes all audio files from storage bucket, deletes all affirmations and listening sessions, then signs out
 
 ### Listen Flow (Playlist Playback)
 1. **Hear it.:** Plays a playlist of up to 5 affirmations in succession
@@ -330,6 +370,15 @@ All tables have row-level security. Users can only access their own data. `pre_w
 7. **Doodle data is JSON in a TEXT column** — works fine for the current scale. If doodle data gets very large (many complex strokes), consider compressing or limiting stroke point density.
 8. **PanResponder in DoodleCanvas** uses a static `useRef` — the panResponder is created once and doesn't update with state changes. The `onStrokesChange` callback is passed at creation time, so stroke state changes use `setStrokes` functional updates internally.
 9. **Signed audio URLs expire after 1 hour** — pre-fetched URLs in the listen screen cache are not refreshed. Long idle sessions may need URL re-fetching.
+
+### Important Technical Notes (M4.5 additions)
+
+- **Animated.multiply for sheet slide** — the intro sheet animation uses `Animated.multiply((1-progress), sheetHeight)` to derive translateY from the actual sheet height (which varies by state). This avoids hardcoded offsets that break when sheet height changes.
+- **measureInWindow for text handoff** — the intro animation measures the hero text's screen position to calculate the exact translateY for the overlay text slide. This ensures a seamless swap between the animated overlay and the static hero text regardless of device/safe area.
+- **Supabase OTP rate limiting** — returns `"For security purposes, you can only request this once every 60 seconds"`. The sign-in screen detects this via `isRateLimitError()` which checks for "rate limit", "too many requests", "email rate limit", and "security purposes" in the error message. Without custom SMTP configured, Supabase free tier limits to 2 emails/hour.
+- **Account deletion** — uses client-side data cleanup (delete storage files + database rows) followed by `signOut()`. Full user record deletion requires Supabase admin API (server-side), which is not implemented. The user's auth record remains but all data is wiped.
+- **FTUE record queue** — uses `router.replace` (not `dismissAll` + `push`) between scripts to avoid "POP_TO_TOP was not handled" warnings. Each recording creates a new affirmation; only the last one gets a listening session for the doodle.
+- **Delete modal touch handling** — the overlay and sheet are separate `Pressable` layers so tapping inside the sheet (e.g. the text input) doesn't dismiss the modal. The dark overlay area above the sheet is its own `Pressable` that closes on tap.
 
 ## Continued Guidance
 Continue to update this file as work is done and keep it updated every addition.

@@ -7,16 +7,17 @@ import { BottomBar } from '@/components/ui/BottomBar';
 import { COLORS } from '@/lib/constants';
 
 export default function CustomizeScriptScreen() {
-  const { title, script } = useLocalSearchParams<{
+  const { title, script, ftue } = useLocalSearchParams<{
     title: string;
     script: string;
+    ftue?: string;
   }>();
   const [editedScript, setEditedScript] = useState(script ?? '');
 
   const handleNext = () => {
     router.push({
       pathname: '/(main)/create/record',
-      params: { title: title ?? 'My Affirmation', script: editedScript },
+      params: { title: title ?? 'My Affirmation', script: editedScript, ...(ftue === '1' && { ftue: '1' }) },
     });
   };
 
